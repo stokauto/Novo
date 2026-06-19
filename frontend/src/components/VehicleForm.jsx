@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { DPANEL } from "@/constants/testIds";
 import { UF_LIST } from "@/lib/format";
 import PhotoUploader from "@/components/PhotoUploader";
-import { X } from "lucide-react";
+import { X, AlertCircle, CheckCircle2 } from "lucide-react";
 
 const empty = {
   category: "carro",
@@ -31,16 +31,62 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
   const [categories, setCategories] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(null); // { kind: "error"|"success", text }
+  const formRef = useRef(null);
+  const errorRef = useRef(null);
 
   useEffect(() => {
     api.get("/categories").then(({ data }) => setCategories(data)).catch(() => {});
   }, []);
 
+  // Auto-dismiss toast after 6s
+  useEffect(() => {
+    if (!toast) return undefined;
+    const id = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
   const set = (k, v) => setData((d) => ({ ...d, [k]: v }));
+
+  const showError = (msg) => {
+    setError(msg);
+    setToast({ kind: "error", text: msg });
+    // Scroll the modal back to the top so the user sees the sticky error
+    requestAnimationFrame(() => {
+      if (errorRef.current && errorRef.current.scrollIntoView) {
+        errorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (formRef.current) {
+        formRef.current.scrollTop = 0;
+      }
+    });
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setToast(null);
+
+    // Client-side validation with friendly pt-BR messages so the browser's
+    // native HTML5 tooltip ("Please fill out this field" in English) doesn't
+    // cause silent submission failures on mobile.
+    const missing = [];
+    if (!data.brand?.trim()) missing.push("Marca");
+    if (!data.model?.trim()) missing.push("Modelo");
+    if (!data.year_made) missing.push("Ano fabricação");
+    if (!data.year_model) missing.push("Ano modelo");
+    if (!data.city?.trim()) missing.push("Cidade");
+    if (!data.uf?.trim()) missing.push("UF");
+    if (data.ad_type === "repasse") {
+      const fp = Number(data.fipe_price);
+      const op = Number(data.price);
+      if (!fp || fp <= 0) missing.push("Valor Tabela FIPE");
+      if (!op || op <= 0) missing.push("Valor de Oferta");
+    }
+    if (missing.length) {
+      showError(`Preencha os campos obrigatórios: ${missing.join(", ")}.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -65,7 +111,19 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
       onSaved?.(res.data);
       onClose?.();
     } catch (err) {
-      setError(err?.response?.data?.detail || "Erro ao salvar anúncio.");
+      const detail = err?.response?.data?.detail;
+      // FastAPI 422 returns an array of objects — flatten it to a string
+      let msg;
+      if (typeof detail === "string") {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail.map((d) => d?.msg || JSON.stringify(d)).join(" • ");
+      } else if (detail && typeof detail === "object") {
+        msg = detail.msg || JSON.stringify(detail);
+      } else {
+        msg = "Erro ao salvar anúncio. Verifique sua conexão e tente novamente.";
+      }
+      showError(msg);
     } finally {
       setSaving(false);
     }
@@ -73,7 +131,34 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto py-8 px-4">
-      <div className="bg-white max-w-4xl w-full" data-testid="vehicle-form-modal">
+      {/* Floating toast — visible from anywhere on the page */}
+      {toast && (
+        <div
+          data-testid="vehicle-form-toast"
+          className={`fixed top-5 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[calc(100%-2rem)] px-5 py-3.5 shadow-2xl flex items-start gap-3 text-sm font-medium ${
+            toast.kind === "error"
+              ? "bg-[#FF3B30] text-white"
+              : "bg-emerald-600 text-white"
+          }`}
+          role="alert"
+        >
+          {toast.kind === "error" ? (
+            <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          ) : (
+            <CheckCircle2 size={20} className="flex-shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1">{toast.text}</div>
+          <button
+            onClick={() => setToast(null)}
+            className="opacity-80 hover:opacity-100 -mr-1"
+            aria-label="Fechar alerta"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      <div ref={formRef} className="bg-white max-w-4xl w-full" data-testid="vehicle-form-modal">
         <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between z-10">
           <div>
             <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">
@@ -88,13 +173,27 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={submit} className="p-6 space-y-6">
-          {error && (
-            <div className="border-l-4 border-[#FF3B30] bg-red-50 text-red-700 text-sm px-4 py-3">
-              {error}
-            </div>
-          )}
+        {/* Sticky error banner — pinned just below the header so it's always visible */}
+        {error && (
+          <div
+            ref={errorRef}
+            data-testid="vehicle-form-error"
+            className="sticky top-[88px] z-10 bg-[#FF3B30] text-white text-sm font-bold px-6 py-3.5 flex items-start gap-2.5 shadow-md"
+            role="alert"
+          >
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <div className="flex-1 leading-relaxed">{error}</div>
+            <button
+              onClick={() => setError("")}
+              className="opacity-80 hover:opacity-100 -mr-1"
+              aria-label="Fechar erro"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
+        <form onSubmit={submit} className="p-6 space-y-6" noValidate>
           {/* Ad type toggle: Public vs Repasse B2B */}
           <div>
             <div className="text-xs uppercase tracking-widest font-bold text-zinc-700 mb-2">

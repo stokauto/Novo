@@ -120,14 +120,47 @@ function VehiclesTab({ user }) {
 
   return (
     <div>
+      {remaining <= 0 && (
+        <div
+          data-testid="dpanel-plan-limit-warning"
+          className="mb-5 border-l-4 border-[#FF3B30] bg-red-50 px-5 py-4 flex items-start gap-3"
+        >
+          <div className="text-2xl leading-none">⚠️</div>
+          <div className="flex-1">
+            <div className="font-black tracking-tight text-[#FF3B30] uppercase text-sm">
+              Limite de anúncios atingido
+            </div>
+            <div className="text-sm text-zinc-700 mt-1 leading-relaxed">
+              Seu plano <strong>{user.plan_name}</strong> permite{" "}
+              <strong>{user.plan_ad_limit} anúncio{user.plan_ad_limit > 1 ? "s" : ""}</strong> ativos/pendentes.
+              Para anunciar mais, faça upgrade ou exclua um anúncio existente.
+            </div>
+            <button
+              onClick={() => {
+                const tabBtn = document.querySelector(`[data-testid="${DPANEL.tabPlan}"]`);
+                if (tabBtn) tabBtn.click();
+              }}
+              className="mt-3 text-xs font-bold uppercase tracking-tight bg-[#FF3B30] text-white px-4 h-9 inline-flex items-center"
+            >
+              Ver planos →
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="text-sm text-zinc-600">
-          {visible.length} anúncio(s) · <span className="font-bold text-black">{remaining}</span> vaga(s) restante(s)
+          {visible.length} anúncio(s) ·{" "}
+          <span className={`font-bold ${remaining <= 0 ? "text-[#FF3B30]" : "text-black"}`}>
+            {remaining}
+          </span>{" "}
+          vaga(s) restante(s) <span className="text-zinc-400">(plano {user.plan_name})</span>
         </div>
         <button
           data-testid={DPANEL.newVehicle}
           onClick={() => setEditing("new")}
           disabled={remaining <= 0}
+          title={remaining <= 0 ? "Limite do plano atingido" : "Cadastrar novo veículo"}
           className="bg-[#FF3B30] hover:bg-[#E13128] disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 h-11 font-bold uppercase tracking-tight text-sm inline-flex items-center gap-2"
         >
           <Plus size={16} /> Novo anúncio
