@@ -61,7 +61,7 @@ export default function Login() {
             {[
               { k: "Anúncios", v: "Painel completo" },
               { k: "Contato", v: "Direto WhatsApp" },
-              { k: "Plano", v: "Pix simples" },
+              { k: "Plano", v: "Ativação via WhatsApp" },
             ].map((s) => (
               <div key={s.k} className="border border-zinc-800 p-4">
                 <div className="text-sm font-black tracking-tight" style={{ fontFamily: "Cabinet Grotesk" }}>{s.k}</div>

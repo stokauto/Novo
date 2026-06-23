@@ -60,7 +60,17 @@ export default function Register() {
     try {
       const { password_confirm, ...payload } = form;
       await register(payload);
-      navigate("/painel", { replace: true });
+      // Após o cadastro, redireciona pro WhatsApp do StockAuto para combinar o pagamento.
+      const planLabel = (plans.find((p) => p.code === form.plan_code)?.name) || form.plan_code;
+      const msg =
+        `Olá! Acabei de me cadastrar no StockAuto e quero ativar minha loja.\n\n` +
+        `*Loja:* ${form.store_name}\n` +
+        `*E-mail:* ${form.email}\n` +
+        `*Plano:* ${planLabel}\n` +
+        `*Cidade:* ${form.city}/${form.uf}\n\n` +
+        `Por favor, me passem os dados para o pagamento.`;
+      const waUrl = `https://wa.me/5567982132978?text=${encodeURIComponent(msg)}`;
+      window.location.href = waUrl;
     } catch (err) {
       setError(err?.response?.data?.detail || "Não foi possível concluir o cadastro.");
     } finally {
@@ -89,18 +99,18 @@ export default function Register() {
                 Sem comissão, sem burocracia — contato direto via WhatsApp.
               </p>
 
-              {/* PIX flow note */}
+              {/* WhatsApp activation note */}
               <div className="mt-10 bg-black text-white p-6">
                 <div className="flex gap-3">
-                  <Info size={20} className="flex-shrink-0 text-[#FF3B30] mt-0.5" />
+                  <Info size={20} className="flex-shrink-0 text-[#25D366] mt-0.5" />
                   <div>
                     <div className="text-xs uppercase tracking-[0.25em] font-bold text-zinc-400 mb-2">
-                      Pagamento via Pix
+                      Ativação via WhatsApp
                     </div>
                     <p className="text-sm text-zinc-300 leading-relaxed">
-                      Após o cadastro, sua conta ficará <span className="text-white font-bold">pendente de aprovação</span>.
-                      No painel você verá a chave Pix para pagamento. Assim que confirmarmos,
-                      seu plano é ativado manualmente por nossa equipe.
+                      Após o cadastro, você será redirecionado direto para o nosso{" "}
+                      <span className="text-white font-bold">WhatsApp</span> para combinar a forma
+                      de pagamento e liberação da conta. Atendimento humano, rápido e sem complicação.
                     </p>
                   </div>
                 </div>

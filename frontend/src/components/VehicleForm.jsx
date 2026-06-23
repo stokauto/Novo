@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { DPANEL } from "@/constants/testIds";
 import { UF_LIST } from "@/lib/format";
 import PhotoUploader from "@/components/PhotoUploader";
-import { X, AlertCircle, CheckCircle2 } from "lucide-react";
+import { X, AlertCircle, CheckCircle2, Flame } from "lucide-react";
 
 const empty = {
   category: "carro",
@@ -23,10 +24,12 @@ const empty = {
   photos: [],
   ad_type: "public",
   fipe_price: "",
+  offer_price: "",
 };
 
 export default function VehicleForm({ initial, onClose, onSaved }) {
   const isEdit = !!initial?.id;
+  const { user } = useAuth();
   const [data, setData] = useState({ ...empty, ...(initial || {}) });
   const [categories, setCategories] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -34,6 +37,9 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
   const [toast, setToast] = useState(null); // { kind: "error"|"success", text }
   const formRef = useRef(null);
   const errorRef = useRef(null);
+
+  const offerLimit = Number(user?.plan_offer_limit ?? 0);
+  const canSetOffer = offerLimit > 0 && data.ad_type !== "repasse";
 
   useEffect(() => {
     api.get("/categories").then(({ data }) => setCategories(data)).catch(() => {});
@@ -89,16 +95,24 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
 
     setSaving(true);
     try {
+      const toInt = (v) => {
+        if (v === "" || v == null) return null;
+        const n = parseInt(String(v).replace(/[^0-9-]/g, ""), 10);
+        return Number.isFinite(n) ? n : null;
+      };
+      const toFloat = (v) => {
+        if (v === "" || v == null) return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
       const payload = {
         ...data,
-        year_made: Number(data.year_made),
-        year_model: Number(data.year_model),
-        km: data.km === "" || data.km === null ? null : Number(data.km),
-        price: data.price === "" || data.price === null ? null : Number(data.price),
-        fipe_price:
-          data.fipe_price === "" || data.fipe_price === null || data.fipe_price === undefined
-            ? null
-            : Number(data.fipe_price),
+        year_made: toInt(data.year_made),
+        year_model: toInt(data.year_model),
+        km: toInt(data.km),
+        price: toFloat(data.price),
+        fipe_price: toFloat(data.fipe_price),
+        offer_price: toFloat(data.offer_price),
         ad_type: data.ad_type === "repasse" ? "repasse" : "public",
         uf: (data.uf || "").toUpperCase(),
       };
@@ -343,6 +357,26 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
                   value={data.fipe_price}
                   onChange={(v) => set("fipe_price", v)}
                 />
+              </Field>
+            )}
+            {canSetOffer && (
+              <Field
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Flame size={12} className="text-[#FF3B30]" />
+                    Valor da Oferta (vira destaque &quot;OFERTA&quot;)
+                  </span>
+                }
+              >
+                <CurrencyInput
+                  testid="vehicle-form-offer-price"
+                  value={data.offer_price}
+                  onChange={(v) => set("offer_price", v)}
+                />
+                <div className="text-[11px] text-zinc-500 mt-1">
+                  Deixe vazio para anúncio normal. Seu plano permite até <strong>{offerLimit}</strong>{" "}
+                  oferta{offerLimit > 1 ? "s" : ""} em destaque.
+                </div>
               </Field>
             )}
           </div>

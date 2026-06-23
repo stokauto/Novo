@@ -20,7 +20,8 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Query, Form
-from fastapi.responses import PlainTextResponse, Response as FastAPIResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import PlainTextResponse, Response as FastAPIResponse, JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
@@ -52,6 +53,65 @@ logger = logging.getLogger("stockauto")
 app = FastAPI(title="StockAuto API")
 api = APIRouter(prefix="/api")
 
+
+# ============================================================================
+# PT-BR validation error handler — translates common Pydantic English messages
+# ============================================================================
+_PT_VALIDATION = [
+    ("Input should be a valid integer, got a number with a fractional part",
+     "Este campo aceita apenas números inteiros (sem casas decimais)."),
+    ("Input should be a valid integer", "Informe um número inteiro válido."),
+    ("Input should be a valid number, unable to parse", "Informe um número válido."),
+    ("Input should be a valid number", "Informe um número válido."),
+    ("Field required", "Campo obrigatório."),
+    ("value is not a valid email address", "E-mail inválido."),
+    ("Input should be a valid email address", "E-mail inválido."),
+    ("String should have at least 1 character", "Preencha este campo."),
+    ("String should have at least", "Texto muito curto."),
+    ("String should have at most", "Texto muito longo."),
+    ("Input should be 'public' or 'repasse'", "Tipo de anúncio inválido (use Público ou Repasse)."),
+]
+
+
+def _translate_validation_msg(msg: str) -> str:
+    for en, pt in _PT_VALIDATION:
+        if en.lower() in (msg or "").lower():
+            return pt
+    return msg or "Erro de validação."
+
+
+_FIELD_LABELS = {
+    "year_made": "Ano de fabricação",
+    "year_model": "Ano modelo",
+    "km": "Quilometragem",
+    "price": "Preço",
+    "brand": "Marca",
+    "model": "Modelo",
+    "city": "Cidade",
+    "uf": "UF",
+    "email": "E-mail",
+    "password": "Senha",
+    "store_name": "Nome da loja",
+    "fipe_price": "Valor FIPE",
+    "offer_price": "Valor da oferta",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def pt_br_validation_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors() or []
+    if not errors:
+        return JSONResponse(status_code=422, content={"detail": "Dados inválidos. Verifique e tente novamente."})
+    msgs = []
+    for e in errors[:3]:
+        loc = [x for x in e.get("loc", ()) if x != "body"]
+        field_path = ".".join(str(x) for x in loc)
+        label = _FIELD_LABELS.get(loc[-1] if loc else "", field_path or "campo")
+        msg = _translate_validation_msg(e.get("msg", ""))
+        msgs.append(f"{label}: {msg}" if label else msg)
+    return JSONResponse(status_code=422, content={"detail": " • ".join(msgs)})
+
+
 # ============================================================================
 # HELPERS
 # ============================================================================
@@ -69,8 +129,8 @@ CATEGORIES = [
 ]
 
 DEFAULT_PLANS = [
-    {"code": "avulso", "name": "Avulso", "price": 29.90, "ad_limit": 1, "period_days": 90, "period_label": "Trimestral"},
-    {"code": "loja", "name": "Loja", "price": 250.00, "ad_limit": 30, "period_days": 90, "period_label": "Trimestral"},
+    {"code": "avulso", "name": "Avulso", "price": 29.90, "ad_limit": 1, "offer_limit": 0, "period_days": 90, "period_label": "Trimestral"},
+    {"code": "loja", "name": "Loja", "price": 250.00, "ad_limit": 30, "offer_limit": 5, "period_days": 90, "period_label": "Trimestral"},
 ]
 
 
@@ -252,7 +312,7 @@ async def upload_image_to_storage(file: UploadFile, owner_id: str, watermark: bo
 # ============================================================================
 # WATERMARK
 # ============================================================================
-WATERMARK_PATH = ROOT_DIR / "assets" / "watermark.png"
+WATERMARK_PATH = (ROOT_DIR / "assets" / "watermark.png").resolve()
 _watermark_cache: Optional[Image.Image] = None
 
 
@@ -362,6 +422,8 @@ class VehicleIn(BaseModel):
     # Repasse B2B fields ------------------------------------------------------
     ad_type: Literal["public", "repasse"] = "public"
     fipe_price: Optional[float] = None  # FIPE reference value, only used when ad_type == "repasse"
+    # Offer/promotion field (public ads only) ---------------------------------
+    offer_price: Optional[float] = None  # When set & < price, the card shows "OFERTA" with original riscado
 
 
 class AdminUserUpdateIn(BaseModel):
@@ -466,6 +528,27 @@ async def get_settings() -> dict:
         }
         await db.settings.insert_one(s)
         s.pop("_id", None)
+        return s
+    # Merge missing plan fields from DEFAULT_PLANS so legacy settings stay compatible
+    saved_plans = s.get("plans") or []
+    defaults_by_code = {p["code"]: p for p in DEFAULT_PLANS}
+    merged_plans = []
+    changed = False
+    for plan in saved_plans:
+        default = defaults_by_code.get(plan.get("code"), {})
+        merged = {**default, **plan}
+        if merged != plan:
+            changed = True
+        merged_plans.append(merged)
+    # Add any new plan codes from DEFAULT_PLANS that aren't in saved settings yet
+    saved_codes = {p.get("code") for p in saved_plans}
+    for p in DEFAULT_PLANS:
+        if p["code"] not in saved_codes:
+            merged_plans.append(p)
+            changed = True
+    if changed:
+        s["plans"] = merged_plans
+        await db.settings.update_one({"id": "global"}, {"$set": {"plans": merged_plans}})
     return s
 
 
@@ -502,6 +585,7 @@ async def auth_register(body: RegisterIn, response: Response):
         "plan_name": plan["name"],
         "plan_ad_limit": plan["ad_limit"],
         "plan_price": plan["price"],
+        "plan_offer_limit": plan.get("offer_limit", 0),
         "payment_provider": "pix",
         "payment_status": "pending",
         "stripe_customer_id": None,
@@ -796,6 +880,19 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
     count = await db.vehicles.count_documents({"dealer_id": user["id"], "status": {"$in": ["active", "pending"]}})
     if count >= int(user.get("plan_ad_limit", 1)):
         raise HTTPException(status_code=400, detail=f"Limite do plano atingido ({user.get('plan_ad_limit')} anúncios).")
+    # Enforce offer_limit: count current ads with offer_price set
+    if body.offer_price and body.offer_price > 0:
+        offer_used = await db.vehicles.count_documents({
+            "dealer_id": user["id"],
+            "status": {"$in": ["active", "pending"]},
+            "offer_price": {"$gt": 0},
+        })
+        offer_max = int(user.get("plan_offer_limit", 0))
+        if offer_used >= offer_max:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Seu plano permite {offer_max} {'oferta' if offer_max == 1 else 'ofertas'} em destaque. Limite atingido."
+            )
     vid = str(uuid.uuid4())
     base_slug = vehicle_slug_base(body.model_dump())
     slug = await unique_slug(db.vehicles, base_slug)
@@ -804,7 +901,9 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
         "id": vid,
         "slug": slug,
         "dealer_id": user["id"],
-        "status": "pending",  # admin must approve
+        # Repasse B2B é auto-publicado (parceria entre lojistas, sem moderação).
+        # Anúncios públicos passam por aprovação do admin.
+        "status": "active" if body.ad_type == "repasse" else "pending",
         "uf": (doc.get("uf") or "").upper(),
         "main_photo": (doc.get("photos") or [None])[0],
         "created_at": now_iso(),
@@ -815,7 +914,11 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
         "id": str(uuid.uuid4()),
         "type": "new_ad",
         "title": f"Novo anúncio: {doc['brand']} {doc['model']} {doc['year_model']}",
-        "body": f"Aguardando aprovação — {user.get('store_name')}",
+        "body": (
+            f"Publicado automaticamente no Hub de Repasse — {user.get('store_name')}"
+            if body.ad_type == "repasse"
+            else f"Aguardando aprovação — {user.get('store_name')}"
+        ),
         "vehicle_id": vid,
         "user_id": user["id"],
         "read": False,
@@ -889,6 +992,7 @@ async def admin_update_user(uid: str, body: AdminUserUpdateIn, user: dict = Depe
             update["plan_name"] = plan["name"]
             update["plan_ad_limit"] = plan["ad_limit"]
             update["plan_price"] = plan["price"]
+            update["plan_offer_limit"] = plan.get("offer_limit", 0)
     if "store_name" in update or "city" in update:
         store_name = update.get("store_name", target.get("store_name"))
         city = update.get("city", target.get("city"))
@@ -969,6 +1073,21 @@ async def admin_get_settings(user: dict = Depends(get_admin_user)):
 async def admin_update_settings(body: SettingsIn, user: dict = Depends(get_admin_user)):
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     await db.settings.update_one({"id": "global"}, {"$set": update}, upsert=True)
+    # Cascade plan changes (ad_limit / offer_limit / price / name) to existing dealers
+    if "plans" in update and isinstance(update["plans"], list):
+        for plan in update["plans"]:
+            code = plan.get("code")
+            if not code:
+                continue
+            await db.users.update_many(
+                {"role": "dealer", "plan_code": code},
+                {"$set": {
+                    "plan_name": plan.get("name"),
+                    "plan_ad_limit": int(plan.get("ad_limit", 1)),
+                    "plan_price": float(plan.get("price", 0)),
+                    "plan_offer_limit": int(plan.get("offer_limit", 0)),
+                }}
+            )
     return await get_settings()
 
 
@@ -1391,6 +1510,19 @@ async def on_startup():
     await db.vehicles.create_index([("category", 1), ("uf", 1)])
     init_storage()
     await seed_admin()  # Admin é necessário para login, sempre executado
+    # Migration: sincroniza plan_ad_limit + plan_offer_limit dos dealers com a config atual dos planos.
+    # Resolve casos onde o admin trocou o plano antes de uma atualização da app.
+    settings = await get_settings()
+    for plan in settings.get("plans", DEFAULT_PLANS):
+        await db.users.update_many(
+            {"role": "dealer", "plan_code": plan["code"]},
+            {"$set": {
+                "plan_name": plan["name"],
+                "plan_ad_limit": plan["ad_limit"],
+                "plan_price": plan["price"],
+                "plan_offer_limit": plan.get("offer_limit", 0),
+            }}
+        )
     # Demo seeds (revendedores fictícios + veículos de exemplo) só rodam quando
     # SEED_DEMO_DATA=true no .env. Em produção fica off para preservar dados reais.
     if SEED_DEMO_DATA:

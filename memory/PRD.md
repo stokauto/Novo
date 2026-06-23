@@ -16,7 +16,21 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
-### 12/Jan/2026 — Hub de Repasse B2B (Exclusivo Lojistas)
+### 12/Jan/2026 — Hub de Repasse B2B + Melhorias críticas
+- **Bugs corrigidos:**
+  - **Mensagem de erro em PT-BR**: handler global `RequestValidationError` traduz mensagens Pydantic comuns ("Input should be a valid integer..." → "Quilometragem: Este campo aceita apenas números inteiros (sem casas decimais).")
+  - **Plano Loja com limite 1**: migration no startup + cascade no `PUT /admin/settings` sincronizam `plan_ad_limit` + `plan_offer_limit` de todos os dealers conforme settings dos planos
+  - **Watermark path**: agora usa `Path(__file__).parent.resolve()` para path absoluto à prova de symlinks
+- **Sistema de Ofertas em Destaque (P0):**
+  - Backend: campo `offer_price: Optional[float]` no `VehicleIn`; `offer_limit` em `DEFAULT_PLANS` (avulso=0, loja=5); enforcement no `dealer_create_vehicle` (HTTP 400 se ultrapassar limite); migration garante campos em settings legadas
+  - Frontend: campo "Valor da Oferta" no `VehicleForm` (só visível quando offer_limit > 0 e ad_type=public), com aviso do limite; `VehicleCard` mostra preço original riscado + valor da oferta destaque vermelho + selo "OFERTA -X%"
+  - Admin: campo `offer_limit` editável por plano em `AdminPanel → Configurações`
+- **Pagamento via WhatsApp:**
+  - Removido todo fluxo PIX/QR do `Register.jsx` e `PendingApproval.jsx`
+  - Tela `PendingApproval` reescrita: CTA grande "Falar com a equipe no WhatsApp" + mensagem pré-preenchida com loja, e-mail, plano, cidade
+  - Após `auth/register`, frontend faz `window.location.href = https://wa.me/5567982132978?text=...` com dados do cadastro
+- **Repasse B2B auto-publicado:** `POST /api/dealer/vehicles` com `ad_type=repasse` → `status="active"` direto (sem moderação). Públicos continuam `pending`.
+- **Hub de Repasse implementado:** rotas `/repasse` e `/repasse/:slug` protegidas (dealer/admin), card amarelo com FIPE/Oferta/Margem, selo "MELHOR MARGEM" vermelho quando >20%, feed "Últimas 24h"
 - **Novo modelo de dados** em `vehicles`:
   - `ad_type`: `"public"` (default) | `"repasse"` — separa anúncios públicos dos B2B
   - `fipe_price`: opcional, valor FIPE de referência (obrigatório quando ad_type=repasse)

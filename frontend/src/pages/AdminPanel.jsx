@@ -762,7 +762,7 @@ function SettingsTab() {
         </div>
         <div className="mt-5 space-y-5">
           {plans.map((pl) => (
-            <div key={pl.code} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end border-b border-zinc-100 pb-4">
+            <div key={pl.code} className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end border-b border-zinc-100 pb-4">
               <Field label="Nome do plano">
                 <input value={pl.name} onChange={(e) => setPlanField(pl.code, "name", e.target.value)}
                   className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
@@ -775,6 +775,15 @@ function SettingsTab() {
               <Field label="Limite de anúncios">
                 <input type="number" value={pl.ad_limit} onChange={(e) => setPlanField(pl.code, "ad_limit", e.target.value)}
                   className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+              </Field>
+              <Field label="Limite de ofertas em destaque">
+                <input
+                  data-testid={`admin-plan-${pl.code}-offer-limit`}
+                  type="number"
+                  value={pl.offer_limit ?? 0}
+                  onChange={(e) => setPlanField(pl.code, "offer_limit", e.target.value)}
+                  className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white"
+                />
               </Field>
               <Field label="Validade (dias)">
                 <input type="number" value={pl.period_days ?? 90}
