@@ -23,9 +23,8 @@ export default function Listing() {
   const [form, setForm] = useState(() => emptyForm(sp));
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Load categories once
+  // Load categories once (title is now managed by react-helmet-async via <SEO />)
   useEffect(() => {
-    document.title = "Veículos à venda em Campo Grande - MS | StockAuto";
     api.get("/categories").then((r) => setCategories(r.data)).catch(() => {});
   }, []);
 
@@ -37,6 +36,10 @@ export default function Listing() {
       const v = sp.get(k);
       if (v) params[k] = v;
     });
+    // Map "?oferta=true" → "has_offer=true" filter (used by the OFERTAS nav link)
+    if (sp.get("oferta") === "true") {
+      params.has_offer = true;
+    }
     params.limit = 60;
     api
       .get("/vehicles", { params })
@@ -75,10 +78,16 @@ export default function Listing() {
     [categories, form.category]
   );
 
-  const seoTitle = activeCategory
+  const isOfertasView = sp.get("oferta") === "true";
+
+  const seoTitle = isOfertasView
+    ? "Veículos em Oferta e Promoção em Campo Grande - MS"
+    : activeCategory
     ? `${activeCategory} à venda em Campo Grande - MS`
     : "Veículos à venda em Campo Grande - MS";
-  const seoDesc = activeCategory
+  const seoDesc = isOfertasView
+    ? "Ofertas e promoções de carros, motos e camionetes em Campo Grande/MS. Os melhores descontos selecionados pelos revendedores StockAuto. Contato direto via WhatsApp."
+    : activeCategory
     ? `${activeCategory} usados e seminovos em Campo Grande/MS. Compare preços, fotos e fale direto com os revendedores via WhatsApp pelo StockAuto.`
     : "Carros, motos, camionetes, caminhões e mais à venda em Campo Grande/MS. Catálogo completo com contato direto via WhatsApp pelo StockAuto.";
 
@@ -87,8 +96,16 @@ export default function Listing() {
       <SEO
         title={seoTitle}
         description={seoDesc}
-        canonical={`/veiculos${form.category ? `?category=${form.category}` : ""}`}
-        keywords={`${activeCategory || "veículos"} Campo Grande, ${activeCategory || "carros"} usados MS, comprar ${activeCategory || "veículo"} Campo Grande, StockAuto`}
+        canonical={
+          isOfertasView
+            ? "/veiculos?oferta=true"
+            : `/veiculos${form.category ? `?category=${form.category}` : ""}`
+        }
+        keywords={
+          isOfertasView
+            ? "ofertas de carros Campo Grande, promoções de veículos MS, descontos seminovos Campo Grande, carros em promoção MS, StockAuto"
+            : `${activeCategory || "veículos"} Campo Grande, ${activeCategory || "carros"} usados MS, comprar ${activeCategory || "veículo"} Campo Grande, StockAuto`
+        }
       />
       {/* PAGE HEADER */}
       <section className="bg-black text-white">

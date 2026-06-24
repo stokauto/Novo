@@ -665,6 +665,7 @@ async def list_vehicles(
     dealer_id: Optional[str] = None,
     dealer_slug: Optional[str] = None,
     featured: Optional[bool] = None,
+    has_offer: Optional[bool] = None,
     limit: int = 30,
     skip: int = 0,
 ):
@@ -701,6 +702,8 @@ async def list_vehicles(
     if dealer_slug:
         d = await db.users.find_one({"slug": dealer_slug})
         filt["dealer_id"] = d["id"] if d else "__none__"
+    if has_offer:
+        filt["offer_price"] = {"$gt": 0}
     if q:
         rx = re.compile(re.escape(q), re.IGNORECASE)
         filt["$or"] = [{"brand": rx}, {"model": rx}, {"version": rx}, {"description": rx}, {"city": rx}]

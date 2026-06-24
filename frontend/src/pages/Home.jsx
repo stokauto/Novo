@@ -28,6 +28,7 @@ export default function Home() {
   const [vehicles, setVehicles] = useState([]);
   const [dealers, setDealers] = useState([]);
   const [banners, setBanners] = useState([]);
+  const [offers, setOffers] = useState([]);
 
   useEffect(() => {
     document.title = "StockAuto — As melhores ofertas de Campo Grande, MS";
@@ -35,6 +36,18 @@ export default function Home() {
     api.get("/vehicles?limit=8").then((r) => setVehicles(r.data.items || [])).catch(() => {});
     api.get("/dealers?limit=6").then((r) => setDealers(r.data || [])).catch(() => {});
     api.get("/banners").then((r) => setBanners(r.data || [])).catch(() => {});
+    // Fetch top 4 discounted vehicles (sorted by absolute discount, then % discount)
+    api
+      .get("/vehicles?has_offer=true&limit=24")
+      .then((r) => {
+        const items = (r.data.items || [])
+          .filter((v) => Number(v.offer_price) > 0 && Number(v.price) > Number(v.offer_price))
+          .map((v) => ({ ...v, _discount: Number(v.price) - Number(v.offer_price) }))
+          .sort((a, b) => b._discount - a._discount)
+          .slice(0, 4);
+        setOffers(items);
+      })
+      .catch(() => setOffers([]));
   }, []);
 
   const onSearch = (e) => {
@@ -157,6 +170,49 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* OFERTAS IMPERDÍVEIS — só aparece se houver veículos com offer_price */}
+      {offers.length > 0 && (
+        <section
+          data-testid="home-offers-section"
+          className="border-t-4 border-[#FF3B30] bg-gradient-to-b from-red-50/60 to-white"
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+            <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-[0.3em] font-black text-[#FF3B30] flex items-center gap-2">
+                  <span aria-hidden>🔥</span> Promoções da semana
+                </div>
+                <h2
+                  className="mt-2 text-3xl md:text-4xl font-black tracking-tighter"
+                  style={{ fontFamily: "Cabinet Grotesk" }}
+                >
+                  Ofertas Imperdíveis
+                </h2>
+                <p className="text-sm text-zinc-600 mt-1">
+                  Maiores descontos selecionados pelos revendedores de Campo Grande/MS.
+                </p>
+              </div>
+              <Link
+                to="/veiculos?oferta=true"
+                data-testid="home-offers-see-all"
+                className="text-xs font-bold uppercase tracking-tight border-b-2 border-[#FF3B30] text-[#FF3B30] hover:text-black hover:border-black inline-flex items-center gap-1"
+              >
+                Ver todas as ofertas <ArrowRight size={14} />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {offers.map((v) => (
+                <VehicleCard
+                  key={v.id}
+                  v={v}
+                  testIdBuilder={(id) => `home-offer-${id}`}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* CATEGORIES */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">

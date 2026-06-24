@@ -26,6 +26,17 @@ export default function Layout({ children }) {
           <nav className="hidden md:flex items-center gap-8">
             <NavLink to="/" data-testid={NAV.home} className={linkBase}>Início</NavLink>
             <NavLink to="/veiculos" data-testid={NAV.veiculos} className={linkBase}>Veículos</NavLink>
+            <NavLink
+              to="/veiculos?oferta=true"
+              data-testid="nav-ofertas"
+              className={({ isActive }) =>
+                `text-sm font-bold uppercase tracking-tight transition-colors inline-flex items-center gap-1.5 text-[#FF3B30] hover:text-[#C92A22] ${
+                  isActive ? "underline underline-offset-[6px] decoration-2" : ""
+                }`
+              }
+            >
+              <span aria-hidden>🔥</span> Ofertas
+            </NavLink>
             <NavLink to="/revendedores" data-testid={NAV.revendedores} className={linkBase}>Revendedores</NavLink>
             <NavLink to="/planos" data-testid={NAV.planos} className={linkBase}>Anuncie</NavLink>
             {user && (user.role === "dealer" || user.role === "admin") && (
@@ -60,6 +71,13 @@ export default function Layout({ children }) {
             <div className="px-4 py-4 flex flex-col gap-3">
               <NavLink onClick={() => setOpen(false)} to="/" className={linkBase}>Início</NavLink>
               <NavLink onClick={() => setOpen(false)} to="/veiculos" className={linkBase}>Veículos</NavLink>
+              <NavLink
+                onClick={() => setOpen(false)}
+                to="/veiculos?oferta=true"
+                className="text-base font-bold uppercase tracking-tight text-[#FF3B30] hover:text-[#C92A22] inline-flex items-center gap-1.5"
+              >
+                <span aria-hidden>🔥</span> Ofertas
+              </NavLink>
               <NavLink onClick={() => setOpen(false)} to="/revendedores" className={linkBase}>Revendedores</NavLink>
               <NavLink onClick={() => setOpen(false)} to="/planos" className={linkBase}>Anuncie</NavLink>
               {user && (user.role === "dealer" || user.role === "admin") && (
