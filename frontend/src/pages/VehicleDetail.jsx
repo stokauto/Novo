@@ -136,8 +136,9 @@ export default function VehicleDetail() {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // Clipboard API indisponível (HTTP, permission denied, etc.)
+      console.warn("[share.copyLink] clipboard unavailable", err?.message || err);
     }
   };
 
@@ -187,7 +188,7 @@ export default function VehicleDetail() {
             <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
               {photos.map((p, i) => (
                 <button
-                  key={i}
+                  key={p || `photo-${i}`}
                   onClick={() => setActive(i)}
                   className={`aspect-square overflow-hidden border-2 ${
                     i === active ? "border-black" : "border-transparent hover:border-zinc-400"

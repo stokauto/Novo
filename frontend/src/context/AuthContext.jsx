@@ -12,7 +12,11 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);
-    } catch {
+    } catch (err) {
+      // Sessão expirada / não autenticado — comportamento esperado para visitantes
+      if (err?.response?.status && err.response.status !== 401) {
+        console.error("[auth.refresh]", err);
+      }
       setUser(null);
     } finally {
       setLoading(false);
@@ -36,12 +40,20 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try { await api.post("/auth/logout"); } catch { /* network error — local logout still proceeds */ }
+    try {
+      await api.post("/auth/logout");
+    } catch (err) {
+      // Logout local prossegue mesmo se servidor falhar
+      console.warn("[auth.logout]", err?.message || err);
+    }
     setUser(null);
   };
 
+  // Memoize context value to avoid unnecessary re-renders of consumers
+  const ctxValue = { user, loading, login, register, logout, refresh, setUser };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refresh, setUser }}>
+    <AuthContext.Provider value={ctxValue}>
       {children}
     </AuthContext.Provider>
   );

@@ -89,8 +89,10 @@ export default function DealerList() {
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* Fixed-length skeleton placeholders — index key is intentional */}
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="border border-zinc-200 p-6 animate-pulse h-32" />
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={`skeleton-${i}`} className="border border-zinc-200 p-6 animate-pulse h-32" />
             ))}
           </div>
         ) : filtered.length === 0 ? (

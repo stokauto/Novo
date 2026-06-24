@@ -222,8 +222,10 @@ export default function Repasse() {
 
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Fixed-length skeleton placeholders — index key is intentional */}
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-[420px] bg-zinc-100 animate-pulse" />
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={`skeleton-${i}`} className="h-[420px] bg-zinc-100 animate-pulse" />
             ))}
           </div>
         ) : items.length === 0 ? (

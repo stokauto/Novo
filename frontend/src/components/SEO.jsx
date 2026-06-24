@@ -61,7 +61,10 @@ export default function SEO({
       <meta name="twitter:image" content={img} />
 
       {ldArray.map((obj, i) => (
-        <script key={i} type="application/ld+json">
+        // JSON-LD scripts have no stable identifier; index key is acceptable
+        // because the list is recomputed only when jsonLd input changes.
+        // eslint-disable-next-line react/no-array-index-key
+        <script key={`ld-${i}`} type="application/ld+json">
           {JSON.stringify(obj)}
         </script>
       ))}

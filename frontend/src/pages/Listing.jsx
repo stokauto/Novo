@@ -327,8 +327,10 @@ export default function Listing() {
         <section className="md:col-span-9" data-testid={LISTING.results}>
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Fixed-length skeleton placeholders — index key is intentional */}
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="border border-zinc-200 animate-pulse">
+                // eslint-disable-next-line react/no-array-index-key
+                <div key={`skeleton-${i}`} className="border border-zinc-200 animate-pulse">
                   <div className="aspect-[4/3] bg-zinc-100" />
                   <div className="p-5 space-y-3">
                     <div className="h-3 w-1/3 bg-zinc-100" />

@@ -112,7 +112,9 @@ export default function BannerCarousel({ items }) {
         <div className="absolute bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
           {items.map((_, idx) => (
             <button
-              key={idx}
+              // Banner dots index is the position itself — stable for the lifetime of items array
+              // eslint-disable-next-line react/no-array-index-key
+              key={`dot-${idx}`}
               data-testid={HOMEPAGE.bannerDot(idx)}
               onClick={() => go(idx)}
               aria-label={`Ir para banner ${idx + 1}`}
