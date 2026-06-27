@@ -49,7 +49,7 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
 
-        <!-- JSON-LD: Organization + LocalBusiness (Campo Grande) -->
+        <!-- JSON-LD: Organization + AutoDealer (cobertura nacional, capitais atendidas) -->
         <script type="application/ld+json">
         {
           "@context": "https://schema.org",
@@ -58,27 +58,27 @@
           "url": "https://stockauto.com.br",
           "logo": "https://stockauto.com.br/logo-stockauto-dark.png",
           "image": "https://stockauto.com.br/og-default.jpg",
-          "description": "Marketplace de veículos em Campo Grande, MS — carros, motos, camionetes e caminhões direto com o revendedor.",
-          "areaServed": {
-            "@type": "City",
-            "name": "Campo Grande",
-            "containedInPlace": {
-              "@type": "State",
-              "name": "Mato Grosso do Sul"
+          "description": "Marketplace nacional de veículos seminovos com hub de repasse B2B entre lojistas. Capitais atendidas: Campo Grande (MS) e João Pessoa (PB).",
+          "areaServed": [
+            {
+              "@type": "City",
+              "name": "Campo Grande",
+              "containedInPlace": { "@type": "State", "name": "Mato Grosso do Sul" }
+            },
+            {
+              "@type": "City",
+              "name": "João Pessoa",
+              "containedInPlace": { "@type": "State", "name": "Paraíba" }
             }
-          },
+          ],
           "address": {
             "@type": "PostalAddress",
-            "addressLocality": "Campo Grande",
-            "addressRegion": "MS",
             "addressCountry": "BR"
           },
-          "geo": {
-            "@type": "GeoCoordinates",
-            "latitude": -20.4697,
-            "longitude": -54.6201
-          },
-          "sameAs": []
+          "sameAs": [
+            "https://www.instagram.com/stockautobr",
+            "https://www.facebook.com/stockautobr"
+          ]
         }
         </script>
 

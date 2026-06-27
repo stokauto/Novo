@@ -1258,8 +1258,12 @@ async def sitemap_xml(request: Request):
     entries: list[tuple[str, str, str, str]] = []  # (loc, lastmod, changefreq, priority)
     entries.append((f"{base}/", today, "daily", "1.0"))
     entries.append((f"{base}/veiculos", today, "daily", "0.9"))
+    entries.append((f"{base}/veiculos?oferta=true", today, "daily", "0.85"))
     entries.append((f"{base}/revendedores", today, "weekly", "0.8"))
     entries.append((f"{base}/cadastro", today, "monthly", "0.5"))
+    # Regional SEO landing pages (capitais atendidas)
+    entries.append((f"{base}/seminovos-campo-grande-ms", today, "daily", "0.95"))
+    entries.append((f"{base}/seminovos-joao-pessoa-pb", today, "daily", "0.95"))
 
     # Categorias (filtros da listagem)
     for c in CATEGORIES:

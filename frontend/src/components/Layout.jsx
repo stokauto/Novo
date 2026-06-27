@@ -1,10 +1,54 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { NAV } from "@/constants/testIds";
-import { Menu, X, ChevronRight, Instagram, Facebook } from "lucide-react";
+import { Menu, X, ChevronRight, Instagram, Facebook, MapPin } from "lucide-react";
 
 const linkBase = "text-sm font-bold tracking-tight uppercase hover:opacity-60 transition-opacity";
+
+const REGION_OPTIONS = [
+  { slug: "campo-grande-ms", label: "Campo Grande, MS" },
+  { slug: "joao-pessoa-pb", label: "João Pessoa, PB" },
+];
+
+function RegionSelector() {
+  const navigate = useNavigate();
+  const [current, setCurrent] = useState("campo-grande-ms");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("stockauto:region");
+      if (saved && REGION_OPTIONS.some((r) => r.slug === saved)) setCurrent(saved);
+    } catch (err) {
+      console.warn("[region] localStorage unavailable", err?.message);
+    }
+  }, []);
+
+  const onChange = (slug) => {
+    setCurrent(slug);
+    try { localStorage.setItem("stockauto:region", slug); } catch (e) { /* quota */ }
+    navigate(`/seminovos-${slug}`);
+  };
+
+  return (
+    <label
+      data-testid="header-region-selector"
+      className="hidden md:inline-flex items-center gap-1.5 border border-zinc-200 hover:border-black px-2.5 h-9 text-xs uppercase tracking-tight font-bold cursor-pointer transition-colors"
+    >
+      <MapPin size={13} className="text-[#FF3B30]" />
+      <select
+        value={current}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-transparent outline-none cursor-pointer pr-1 font-bold"
+        aria-label="Selecionar região"
+      >
+        {REGION_OPTIONS.map((r) => (
+          <option key={r.slug} value={r.slug}>{r.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -46,6 +90,7 @@ export default function Layout({ children }) {
             )}
             {user ? (
               <div className="flex items-center gap-4" data-testid={NAV.userMenu}>
+                <RegionSelector />
                 {user.role === "admin" ? (
                   <Link to="/admin" data-testid={NAV.admin} className={linkBase}>ADM</Link>
                 ) : (
@@ -55,6 +100,7 @@ export default function Layout({ children }) {
               </div>
             ) : (
               <div className="flex items-center gap-4">
+                <RegionSelector />
                 <Link to="/login" data-testid={NAV.login} className={linkBase}>Entrar</Link>
                 <Link to="/cadastro" data-testid={NAV.cadastro} className="bg-black text-white px-5 py-2.5 text-sm font-bold uppercase tracking-tight hover:bg-zinc-800 transition-colors">
                   Anunciar
@@ -112,12 +158,12 @@ export default function Layout({ children }) {
           <div className="md:col-span-2">
             <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-14 w-auto" />
             <p className="mt-5 text-zinc-400 max-w-md leading-relaxed">
-              O marketplace direto entre compradores e revendedores de veículos
-              em Campo Grande, MS. Anúncios verificados, contato via WhatsApp, sem burocracia.
+              Marketplace nacional de veículos seminovos. Anúncios verificados, contato
+              direto via WhatsApp e Hub de Repasse B2B exclusivo para lojistas — sem burocracia.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <a
-                href="https://www.instagram.com/stockautoms?igsh=MXNzcjQ3cnFlaGdnaQ=="
+                href="https://www.instagram.com/stockautobr"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Siga o StockAuto no Instagram"
@@ -127,7 +173,7 @@ export default function Layout({ children }) {
                 <Instagram size={20} className="text-zinc-300 group-hover:text-white transition-colors" />
               </a>
               <a
-                href="https://www.facebook.com/share/1Hi1BsnRCH/"
+                href="https://www.facebook.com/stockautobr"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Siga o StockAuto no Facebook"
@@ -137,7 +183,7 @@ export default function Layout({ children }) {
                 <Facebook size={20} className="text-zinc-300 group-hover:text-white transition-colors" />
               </a>
               <span className="ml-2 text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">
-                @stockautoms
+                @stockautobr
               </span>
             </div>
           </div>
@@ -145,8 +191,32 @@ export default function Layout({ children }) {
             <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-4">Navegação</div>
             <ul className="space-y-2 text-sm">
               <li><Link to="/veiculos" className="hover:text-[#FF3B30]">Veículos</Link></li>
+              <li><Link to="/veiculos?oferta=true" className="hover:text-[#FF3B30]">🔥 Ofertas</Link></li>
               <li><Link to="/revendedores" className="hover:text-[#FF3B30]">Revendedores</Link></li>
               <li><Link to="/planos" className="hover:text-[#FF3B30]">Anuncie</Link></li>
+            </ul>
+          </div>
+          <div>
+            <div data-testid="footer-cities-section" className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-4">Cidades Atendidas</div>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link
+                  to="/seminovos-campo-grande-ms"
+                  data-testid="footer-city-campo-grande"
+                  className="hover:text-[#FF3B30] flex items-center gap-1"
+                >
+                  Campo Grande, MS <ChevronRight size={14} />
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/seminovos-joao-pessoa-pb"
+                  data-testid="footer-city-joao-pessoa"
+                  className="hover:text-[#FF3B30] flex items-center gap-1"
+                >
+                  João Pessoa, PB <ChevronRight size={14} />
+                </Link>
+              </li>
             </ul>
           </div>
           <div>
@@ -161,13 +231,14 @@ export default function Layout({ children }) {
         <div className="border-t border-zinc-900">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-4">
-              Buscas populares em Campo Grande
+              Buscas populares
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <Link to="/veiculos?category=carro&city=Campo Grande" className="text-zinc-400 hover:text-[#FF3B30]">Carros usados em CG</Link>
-              <Link to="/veiculos?category=camionete&city=Campo Grande" className="text-zinc-400 hover:text-[#FF3B30]">Camionetes em Campo Grande</Link>
-              <Link to="/veiculos?category=moto&uf=MS" className="text-zinc-400 hover:text-[#FF3B30]">Motos seminovas em MS</Link>
-              <Link to="/revendedores" className="text-zinc-400 hover:text-[#FF3B30]">Revendas na Avenida Bandeirantes</Link>
+              <Link to="/seminovos-campo-grande-ms" className="text-zinc-400 hover:text-[#FF3B30]">Carros usados em Campo Grande, MS</Link>
+              <Link to="/seminovos-joao-pessoa-pb" className="text-zinc-400 hover:text-[#FF3B30]">Seminovos em João Pessoa, PB</Link>
+              <Link to="/veiculos?category=camionete" className="text-zinc-400 hover:text-[#FF3B30]">Camionetes</Link>
+              <Link to="/veiculos?oferta=true" className="text-zinc-400 hover:text-[#FF3B30]">Veículos em oferta</Link>
+              <Link to="/revendedores" className="text-zinc-400 hover:text-[#FF3B30]">Revendedores certificados</Link>
             </div>
           </div>
         </div>

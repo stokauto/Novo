@@ -15,7 +15,31 @@ import DealerPanel from "@/pages/DealerPanel";
 import AdminPanel from "@/pages/AdminPanel";
 import Repasse from "@/pages/Repasse";
 import RepasseDetail from "@/pages/RepasseDetail";
+import RegionalLanding from "@/pages/RegionalLanding";
 import ComingSoon from "@/pages/ComingSoon";
+
+const REGIONS = {
+  "campo-grande-ms": {
+    city: "Campo Grande",
+    uf: "MS",
+    ufFull: "Mato Grosso do Sul",
+    citySlug: "campo-grande-ms",
+    h1: "Veículos e Repasses em Campo Grande - MS",
+    seoTitle: "Seminovos em Campo Grande - MS | StockAuto",
+    seoDesc:
+      "Carros, motos, camionetes e caminhões seminovos em Campo Grande/MS. Veja anúncios verificados de revendedores locais + Hub de Repasse B2B exclusivo. Contato direto via WhatsApp pelo StockAuto.",
+  },
+  "joao-pessoa-pb": {
+    city: "João Pessoa",
+    uf: "PB",
+    ufFull: "Paraíba",
+    citySlug: "joao-pessoa-pb",
+    h1: "Veículos e Repasses em João Pessoa - PB",
+    seoTitle: "Seminovos em João Pessoa - PB | StockAuto",
+    seoDesc:
+      "Carros, motos, camionetes e caminhões seminovos em João Pessoa/PB. Anúncios verificados de revendedores da Paraíba + Hub de Repasse B2B exclusivo. Contato direto via WhatsApp pelo StockAuto.",
+  },
+};
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -72,6 +96,14 @@ function App() {
                     <RepasseDetail />
                   </ProtectedRoute>
                 }
+              />
+              <Route
+                path="/seminovos-campo-grande-ms"
+                element={<RegionalLanding {...REGIONS["campo-grande-ms"]} />}
+              />
+              <Route
+                path="/seminovos-joao-pessoa-pb"
+                element={<RegionalLanding {...REGIONS["joao-pessoa-pb"]} />}
               />
               <Route path="*" element={<ComingSoon title="Página não encontrada" />} />
             </Routes>
