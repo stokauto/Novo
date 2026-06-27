@@ -666,10 +666,15 @@ async def list_vehicles(
     dealer_slug: Optional[str] = None,
     featured: Optional[bool] = None,
     has_offer: Optional[bool] = None,
+    ad_type: Optional[str] = None,
     limit: int = 30,
     skip: int = 0,
 ):
-    # Public listing — excludes repasse (B2B) ads
+    # Security trap: any attempt to query repasse via the public endpoint is rejected.
+    # The repasse hub MUST be accessed via /api/repasse/vehicles which enforces auth + plan.
+    if ad_type == "repasse":
+        raise HTTPException(status_code=403, detail="Acesso negado: anúncios de repasse só estão disponíveis no Hub para lojistas autenticados.")
+    # Public listing — always excludes repasse (B2B) ads regardless of caller
     filt: dict = {"status": "active", "ad_type": {"$ne": "repasse"}}
     if category:
         filt["category"] = category
@@ -732,11 +737,20 @@ async def get_vehicle(slug_or_id: str):
 # REPASSE (B2B) — restricted to authenticated dealers and admins
 # ============================================================================
 def require_repasse_access(user: dict):
+    """
+    Hub de Repasse B2B — acesso restrito a:
+      • admin (qualquer status), OU
+      • dealer com plano 'loja' E status == 'active'
+    """
     role = user.get("role")
-    if role not in {"dealer", "admin"}:
-        raise HTTPException(status_code=403, detail="Acesso restrito a revendedores")
-    if role == "dealer" and user.get("status") != "active":
+    if role == "admin":
+        return user
+    if role != "dealer":
+        raise HTTPException(status_code=403, detail="Acesso exclusivo para lojistas.")
+    if user.get("status") != "active":
         raise HTTPException(status_code=403, detail="Sua conta ainda não foi liberada pelo administrador.")
+    if user.get("plan_code") != "loja":
+        raise HTTPException(status_code=403, detail="Acesso ao Hub de Repasse é exclusivo do plano Loja. Faça upgrade para acessar.")
     return user
 
 
