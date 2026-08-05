@@ -890,6 +890,9 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
         raise HTTPException(status_code=403, detail="Sua conta ainda não foi liberada pelo administrador.")
     # Repasse-specific validations
     if body.ad_type == "repasse":
+        # Hub B2B é exclusivo do plano Loja — dealer avulso não pode publicar repasse
+        if user.get("plan_code") != "loja":
+            raise HTTPException(status_code=403, detail="Publicação no Hub de Repasse é exclusiva do plano Loja. Faça upgrade para anunciar em repasse.")
         if body.fipe_price is None or body.fipe_price <= 0:
             raise HTTPException(status_code=400, detail="Informe o Valor da Tabela FIPE para anúncios de Repasse.")
         if body.price is None or body.price <= 0:

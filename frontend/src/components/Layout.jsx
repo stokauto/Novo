@@ -39,7 +39,7 @@ export default function Layout({ children }) {
             </NavLink>
             <NavLink to="/revendedores" data-testid={NAV.revendedores} className={linkBase}>Revendedores</NavLink>
             <NavLink to="/planos" data-testid={NAV.planos} className={linkBase}>Anuncie</NavLink>
-            {user && (user.role === "dealer" || user.role === "admin") && (
+            {user && (user.role === "admin" || (user.role === "dealer" && user.plan_code === "loja" && user.status === "active")) && (
               <NavLink to="/repasse" data-testid="nav-repasse" className={`${linkBase} text-[#B5820E] hover:text-[#F5A623]`}>
                 Repasse
               </NavLink>
@@ -80,7 +80,7 @@ export default function Layout({ children }) {
               </NavLink>
               <NavLink onClick={() => setOpen(false)} to="/revendedores" className={linkBase}>Revendedores</NavLink>
               <NavLink onClick={() => setOpen(false)} to="/planos" className={linkBase}>Anuncie</NavLink>
-              {user && (user.role === "dealer" || user.role === "admin") && (
+              {user && (user.role === "admin" || (user.role === "dealer" && user.plan_code === "loja" && user.status === "active")) && (
                 <NavLink onClick={() => setOpen(false)} to="/repasse" className={`${linkBase} text-[#B5820E]`}>
                   Repasse
                 </NavLink>
