@@ -1275,9 +1275,8 @@ async def sitemap_xml(request: Request):
     entries.append((f"{base}/veiculos?oferta=true", today, "daily", "0.85"))
     entries.append((f"{base}/revendedores", today, "weekly", "0.8"))
     entries.append((f"{base}/cadastro", today, "monthly", "0.5"))
-    # Regional SEO landing pages (capitais atendidas)
+    # Regional SEO landing (Campo Grande, MS — foco do marketplace)
     entries.append((f"{base}/seminovos-campo-grande-ms", today, "daily", "0.95"))
-    entries.append((f"{base}/seminovos-joao-pessoa-pb", today, "daily", "0.95"))
 
     # Categorias (filtros da listagem)
     for c in CATEGORIES:

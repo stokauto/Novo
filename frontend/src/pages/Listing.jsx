@@ -31,7 +31,8 @@ export default function Listing() {
   // Re-fetch whenever URL params change
   useEffect(() => {
     setLoading(true);
-    const params = {};
+    // Default UF filter = MS (site focado em Mato Grosso do Sul)
+    const params = { uf: "MS" };
     FIELDS.forEach((k) => {
       const v = sp.get(k);
       if (v) params[k] = v;

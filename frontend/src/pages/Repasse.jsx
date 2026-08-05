@@ -14,7 +14,7 @@ function emptyForm(sp) {
     q: sp.get("q") || "",
     category: sp.get("category") || "",
     brand: sp.get("brand") || "",
-    uf: sp.get("uf") || "",
+    uf: sp.get("uf") || "MS",
     city: sp.get("city") || "",
   };
 }
@@ -39,7 +39,7 @@ export default function Repasse() {
 
   useEffect(() => {
     setLoading(true);
-    const params = {};
+    const params = { uf: "MS" };
     FIELDS.forEach((k) => {
       const v = sp.get(k);
       if (v) params[k] = v;

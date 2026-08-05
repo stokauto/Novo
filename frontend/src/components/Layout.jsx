@@ -1,54 +1,10 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { NAV } from "@/constants/testIds";
-import { Menu, X, ChevronRight, Instagram, Facebook, MapPin } from "lucide-react";
+import { Menu, X, ChevronRight, Instagram, Facebook } from "lucide-react";
 
 const linkBase = "text-sm font-bold tracking-tight uppercase hover:opacity-60 transition-opacity";
-
-const REGION_OPTIONS = [
-  { slug: "campo-grande-ms", label: "Campo Grande, MS" },
-  { slug: "joao-pessoa-pb", label: "João Pessoa, PB" },
-];
-
-function RegionSelector() {
-  const navigate = useNavigate();
-  const [current, setCurrent] = useState("campo-grande-ms");
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("stockauto:region");
-      if (saved && REGION_OPTIONS.some((r) => r.slug === saved)) setCurrent(saved);
-    } catch (err) {
-      console.warn("[region] localStorage unavailable", err?.message);
-    }
-  }, []);
-
-  const onChange = (slug) => {
-    setCurrent(slug);
-    try { localStorage.setItem("stockauto:region", slug); } catch (e) { /* quota */ }
-    navigate(`/seminovos-${slug}`);
-  };
-
-  return (
-    <label
-      data-testid="header-region-selector"
-      className="hidden md:inline-flex items-center gap-1.5 border border-zinc-200 hover:border-black px-2.5 h-9 text-xs uppercase tracking-tight font-bold cursor-pointer transition-colors"
-    >
-      <MapPin size={13} className="text-[#FF3B30]" />
-      <select
-        value={current}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-transparent outline-none cursor-pointer pr-1 font-bold"
-        aria-label="Selecionar região"
-      >
-        {REGION_OPTIONS.map((r) => (
-          <option key={r.slug} value={r.slug}>{r.label}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
@@ -90,7 +46,6 @@ export default function Layout({ children }) {
             )}
             {user ? (
               <div className="flex items-center gap-4" data-testid={NAV.userMenu}>
-                <RegionSelector />
                 {user.role === "admin" ? (
                   <Link to="/admin" data-testid={NAV.admin} className={linkBase}>ADM</Link>
                 ) : (
@@ -100,7 +55,6 @@ export default function Layout({ children }) {
               </div>
             ) : (
               <div className="flex items-center gap-4">
-                <RegionSelector />
                 <Link to="/login" data-testid={NAV.login} className={linkBase}>Entrar</Link>
                 <Link to="/cadastro" data-testid={NAV.cadastro} className="bg-black text-white px-5 py-2.5 text-sm font-bold uppercase tracking-tight hover:bg-zinc-800 transition-colors">
                   Anunciar
@@ -158,8 +112,8 @@ export default function Layout({ children }) {
           <div className="md:col-span-2">
             <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-14 w-auto" />
             <p className="mt-5 text-zinc-400 max-w-md leading-relaxed">
-              Marketplace nacional de veículos seminovos. Anúncios verificados, contato
-              direto via WhatsApp e Hub de Repasse B2B exclusivo para lojistas — sem burocracia.
+              Classificados de veículos seminovos em Campo Grande e todo o Mato Grosso do Sul.
+              Anúncios verificados, contato direto via WhatsApp e Hub de Repasse B2B para lojistas.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <a
@@ -197,7 +151,7 @@ export default function Layout({ children }) {
             </ul>
           </div>
           <div>
-            <div data-testid="footer-cities-section" className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-4">Cidades Atendidas</div>
+            <div data-testid="footer-cities-section" className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-4">Atendimento em MS</div>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link
@@ -205,18 +159,12 @@ export default function Layout({ children }) {
                   data-testid="footer-city-campo-grande"
                   className="hover:text-[#FF3B30] flex items-center gap-1"
                 >
-                  Campo Grande, MS <ChevronRight size={14} />
+                  Campo Grande <ChevronRight size={14} />
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/seminovos-joao-pessoa-pb"
-                  data-testid="footer-city-joao-pessoa"
-                  className="hover:text-[#FF3B30] flex items-center gap-1"
-                >
-                  João Pessoa, PB <ChevronRight size={14} />
-                </Link>
-              </li>
+              <li><Link to="/veiculos?city=Dourados&uf=MS" className="hover:text-[#FF3B30] flex items-center gap-1">Dourados <ChevronRight size={14} /></Link></li>
+              <li><Link to="/veiculos?city=Três Lagoas&uf=MS" className="hover:text-[#FF3B30] flex items-center gap-1">Três Lagoas <ChevronRight size={14} /></Link></li>
+              <li><Link to="/veiculos?uf=MS" className="hover:text-[#FF3B30] flex items-center gap-1">Todo o MS <ChevronRight size={14} /></Link></li>
             </ul>
           </div>
           <div>
@@ -234,11 +182,11 @@ export default function Layout({ children }) {
               Buscas populares
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <Link to="/seminovos-campo-grande-ms" className="text-zinc-400 hover:text-[#FF3B30]">Carros usados em Campo Grande, MS</Link>
-              <Link to="/seminovos-joao-pessoa-pb" className="text-zinc-400 hover:text-[#FF3B30]">Seminovos em João Pessoa, PB</Link>
-              <Link to="/veiculos?category=camionete" className="text-zinc-400 hover:text-[#FF3B30]">Camionetes</Link>
+              <Link to="/seminovos-campo-grande-ms" className="text-zinc-400 hover:text-[#FF3B30]">Carros usados em Campo Grande</Link>
+              <Link to="/veiculos?category=camionete&uf=MS" className="text-zinc-400 hover:text-[#FF3B30]">Camionetes em MS</Link>
+              <Link to="/veiculos?category=moto&uf=MS" className="text-zinc-400 hover:text-[#FF3B30]">Motos em MS</Link>
               <Link to="/veiculos?oferta=true" className="text-zinc-400 hover:text-[#FF3B30]">Veículos em oferta</Link>
-              <Link to="/revendedores" className="text-zinc-400 hover:text-[#FF3B30]">Revendedores certificados</Link>
+              <Link to="/revendedores" className="text-zinc-400 hover:text-[#FF3B30]">Revendedores em Campo Grande</Link>
             </div>
           </div>
         </div>
