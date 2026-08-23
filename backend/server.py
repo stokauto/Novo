@@ -128,6 +128,28 @@ CATEGORIES = [
     {"code": "outros", "label": "Outros"},
 ]
 
+# Taxonomia INDEPENDENTE do classificados de veículos.
+# Usada apenas na seção "Serviços" (empresas prestadoras de serviço automotivo).
+SERVICE_CATEGORIES = [
+    {"code": "mecanica", "label": "Mecânica"},
+    {"code": "funilaria", "label": "Funilaria e Pintura"},
+    {"code": "eletrica", "label": "Elétrica Automotiva"},
+    {"code": "ar-condicionado", "label": "Ar-condicionado"},
+    {"code": "vidracaria", "label": "Vidraçaria"},
+    {"code": "estetica", "label": "Estética e Lavagem"},
+    {"code": "pneus", "label": "Pneus e Rodas"},
+    {"code": "escapamento", "label": "Escapamento"},
+    {"code": "guincho", "label": "Guincho"},
+    {"code": "seguros", "label": "Seguros"},
+    {"code": "financiamento", "label": "Financiamento"},
+    {"code": "despachante", "label": "Despachante e Documentação"},
+    {"code": "rastreamento", "label": "Rastreamento"},
+    {"code": "som-acessorios", "label": "Som e Acessórios"},
+    {"code": "locadora", "label": "Locadora de Veículos"},
+    {"code": "vistoria", "label": "Vistoria Veicular"},
+]
+SERVICE_CATEGORY_CODES = {c["code"] for c in SERVICE_CATEGORIES}
+
 DEFAULT_PLANS = [
     {"code": "avulso", "name": "Avulso", "price": 29.90, "ad_limit": 1, "offer_limit": 0, "period_days": 90, "period_label": "Trimestral"},
     {"code": "loja", "name": "Loja", "price": 250.00, "ad_limit": 30, "offer_limit": 5, "period_days": 90, "period_label": "Trimestral"},
@@ -1241,6 +1263,196 @@ async def admin_delete_banner(bid: str, user: dict = Depends(get_admin_user)):
 
 
 # ============================================================================
+# SERVICES (empresas prestadoras) — public read + admin CRUD
+# ESTRUTURA COMPLETAMENTE ISOLADA de "vehicles" (não compartilha taxonomia,
+# categorias, filtros nem coleção). Somente ADM cadastra empresas.
+# ============================================================================
+def public_service(s: dict) -> dict:
+    s = dict(s)
+    s.pop("_id", None)
+    return s
+
+
+def service_slug_base(name: str, city: str) -> str:
+    return slugify(f"{name}-{city}") if city else slugify(name)
+
+
+@api.get("/service-categories")
+async def service_categories_list():
+    return SERVICE_CATEGORIES
+
+
+@api.get("/services")
+async def public_services(
+    category: Optional[str] = None,
+    q: Optional[str] = None,
+    city: Optional[str] = None,
+    uf: Optional[str] = None,
+    limit: int = 60,
+):
+    limit = max(1, min(limit, 200))
+    filt: dict = {"active": True}
+    if category:
+        filt["category"] = category
+    if uf:
+        filt["uf"] = uf.upper()
+    if city:
+        filt["city"] = city
+    if q:
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        filt["$or"] = [{"name": rx}, {"description": rx}]
+    cur = db.services.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return [public_service(s) async for s in cur]
+
+
+@api.get("/services/{slug_or_id}")
+async def get_service(slug_or_id: str):
+    s = await db.services.find_one(
+        {"$or": [{"slug": slug_or_id}, {"id": slug_or_id}], "active": True},
+        {"_id": 0},
+    )
+    if not s:
+        raise HTTPException(status_code=404, detail="Empresa de serviço não encontrada")
+    return public_service(s)
+
+
+# Admin CRUD ------------------------------------------------------------------
+async def _save_service(
+    sid: Optional[str],
+    admin_id: str,
+    name: str,
+    category: str,
+    description: Optional[str],
+    phone: Optional[str],
+    whatsapp: Optional[str],
+    city: str,
+    uf: str,
+    address: Optional[str],
+    active_str: Optional[str],
+    logo: Optional[UploadFile],
+    cover: Optional[UploadFile],
+) -> dict:
+    if category not in SERVICE_CATEGORY_CODES:
+        raise HTTPException(status_code=400, detail="Categoria de serviço inválida")
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="Nome da empresa é obrigatório")
+    if not city or not uf:
+        raise HTTPException(status_code=400, detail="Cidade e UF são obrigatórios")
+
+    is_new = sid is None
+    current = None if is_new else await db.services.find_one({"id": sid})
+    if not is_new and not current:
+        raise HTTPException(status_code=404, detail="Empresa de serviço não encontrada")
+
+    logo_path = current.get("logo_path") if current else None
+    cover_path = current.get("cover_path") if current else None
+    if logo is not None:
+        logo_path = await upload_image_to_storage(logo, admin_id)
+    if cover is not None:
+        cover_path = await upload_image_to_storage(cover, admin_id)
+
+    doc = {
+        "name": name.strip(),
+        "category": category,
+        "description": (description or "").strip(),
+        "phone": (phone or "").strip(),
+        "whatsapp": (whatsapp or "").strip(),
+        "city": city.strip(),
+        "uf": uf.strip().upper(),
+        "address": (address or "").strip(),
+        "logo_path": logo_path,
+        "cover_path": cover_path,
+        "active": (active_str or "true").lower() in {"1", "true", "on", "yes"},
+        "updated_at": now_iso(),
+    }
+    if is_new:
+        doc["id"] = str(uuid.uuid4())
+        doc["created_at"] = now_iso()
+        doc["slug"] = await unique_slug(db.services, service_slug_base(name, city))
+        await db.services.insert_one(doc)
+    else:
+        # Regenerate slug when name or city changes
+        if name != current.get("name") or city != current.get("city"):
+            doc["slug"] = await unique_slug(
+                db.services, service_slug_base(name, city), current_id=sid
+            )
+        await db.services.update_one({"id": sid}, {"$set": doc})
+        doc["id"] = sid
+    return public_service(await db.services.find_one({"id": doc["id"]}, {"_id": 0}))
+
+
+@api.get("/admin/services")
+async def admin_list_services(user: dict = Depends(get_admin_user)):
+    cur = db.services.find({}, {"_id": 0}).sort("created_at", -1)
+    return [public_service(s) async for s in cur]
+
+
+@api.post("/admin/services")
+async def admin_create_service(
+    name: str = Form(...),
+    category: str = Form(...),
+    description: str = Form(""),
+    phone: str = Form(""),
+    whatsapp: str = Form(""),
+    city: str = Form(...),
+    uf: str = Form(...),
+    address: str = Form(""),
+    active: str = Form("true"),
+    logo: Optional[UploadFile] = File(None),
+    cover: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_admin_user),
+):
+    return await _save_service(
+        None, user["id"], name, category, description, phone, whatsapp,
+        city, uf, address, active, logo, cover,
+    )
+
+
+@api.put("/admin/services/{sid}")
+async def admin_update_service(
+    sid: str,
+    name: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    whatsapp: Optional[str] = Form(None),
+    city: Optional[str] = Form(None),
+    uf: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    active: Optional[str] = Form(None),
+    logo: Optional[UploadFile] = File(None),
+    cover: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_admin_user),
+):
+    current = await db.services.find_one({"id": sid})
+    if not current:
+        raise HTTPException(status_code=404, detail="Empresa de serviço não encontrada")
+    return await _save_service(
+        sid,
+        user["id"],
+        name if name is not None else current.get("name"),
+        category if category is not None else current.get("category"),
+        description if description is not None else current.get("description"),
+        phone if phone is not None else current.get("phone"),
+        whatsapp if whatsapp is not None else current.get("whatsapp"),
+        city if city is not None else current.get("city"),
+        uf if uf is not None else current.get("uf"),
+        address if address is not None else current.get("address"),
+        active if active is not None else ("true" if current.get("active") else "false"),
+        logo,
+        cover,
+    )
+
+
+@api.delete("/admin/services/{sid}")
+async def admin_delete_service(sid: str, user: dict = Depends(get_admin_user)):
+    res = await db.services.delete_one({"id": sid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Empresa de serviço não encontrada")
+    return {"ok": True}
+
+
+# ============================================================================
 # SEO: sitemap.xml + robots.txt
 # ============================================================================
 def _site_base(request: Request) -> str:
@@ -1278,6 +1490,7 @@ async def sitemap_xml(request: Request):
     entries.append((f"{base}/veiculos?oferta=true", today, "daily", "0.85"))
     entries.append((f"{base}/revendedores", today, "weekly", "0.8"))
     entries.append((f"{base}/cadastro", today, "monthly", "0.5"))
+    entries.append((f"{base}/comece-agora", today, "weekly", "0.9"))
     # Regional SEO landing (Campo Grande, MS — foco do marketplace)
     entries.append((f"{base}/seminovos-campo-grande-ms", today, "daily", "0.95"))
 
@@ -1297,6 +1510,15 @@ async def sitemap_xml(request: Request):
     async for d in db.users.find({"role": "dealer", "status": "active"}, {"slug": 1, "_id": 0}).limit(2000):
         if d.get("slug"):
             entries.append((f"{base}/revendedor/{d['slug']}", today, "weekly", "0.7"))
+
+    # Seção Serviços + categorias + mini-páginas das empresas
+    entries.append((f"{base}/servicos", today, "daily", "0.85"))
+    for c in SERVICE_CATEGORIES:
+        entries.append((f"{base}/servicos?category={c['code']}", today, "weekly", "0.6"))
+    async for s in db.services.find({"active": True}, {"slug": 1, "updated_at": 1, "_id": 0}).limit(3000):
+        if s.get("slug"):
+            lastmod = (s.get("updated_at") or today).split("T")[0]
+            entries.append((f"{base}/servicos/{s['slug']}", lastmod, "weekly", "0.75"))
 
     body = ['<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
@@ -1531,6 +1753,8 @@ async def on_startup():
     await db.vehicles.create_index("slug")
     await db.vehicles.create_index("dealer_id")
     await db.vehicles.create_index([("category", 1), ("uf", 1)])
+    await db.services.create_index("slug")
+    await db.services.create_index([("category", 1), ("active", 1)])
     init_storage()
     await seed_admin()  # Admin é necessário para login, sempre executado
     # Migration: sincroniza plan_ad_limit + plan_offer_limit dos dealers com a config atual dos planos.

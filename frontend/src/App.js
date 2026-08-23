@@ -15,6 +15,9 @@ import DealerPanel from "@/pages/DealerPanel";
 import AdminPanel from "@/pages/AdminPanel";
 import Repasse from "@/pages/Repasse";
 import RepasseDetail from "@/pages/RepasseDetail";
+import Services from "@/pages/Services";
+import ServiceProfile from "@/pages/ServiceProfile";
+import LandingPlans from "@/pages/LandingPlans";
 import RegionalLanding from "@/pages/RegionalLanding";
 import ComingSoon from "@/pages/ComingSoon";
 
@@ -50,6 +53,10 @@ function App() {
               <Route path="/veiculo/:slug" element={<VehicleDetail />} />
               <Route path="/revendedores" element={<DealerList />} />
               <Route path="/revendedor/:slug" element={<DealerProfile />} />
+              <Route path="/servicos" element={<Services />} />
+              <Route path="/servicos/:slug" element={<ServiceProfile />} />
+              <Route path="/comece-agora" element={<LandingPlans />} />
+              <Route path="/planos-agora" element={<Navigate to="/comece-agora" replace />} />
               <Route path="/planos" element={<Navigate to="/cadastro" replace />} />
               <Route path="/login" element={<Login />} />
               <Route path="/cadastro" element={<Register />} />

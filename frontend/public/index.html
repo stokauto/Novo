@@ -12,7 +12,10 @@
 
         <!-- Primary SEO -->
         <title>StockAuto | Classificados de Veículos e Repasse em Campo Grande - MS</title>
-        <meta name="description" content="StockAuto — Classificados de veículos seminovos e Hub de Repasse B2B em Campo Grande, MS. Carros, motos, camionetes e caminhões direto com o revendedor via WhatsApp." />
+        <!-- description/OG dinâmicos são injetados pelo react-helmet-async por rota.
+             Não duplicar aqui para evitar tags concorrentes na DOM (Helmet não sobrescreve
+             tags criadas fora do seu controle). Mantidos apenas o title default (fallback)
+             e as diretivas globais de indexação. -->
         <meta name="keywords" content="carros usados Campo Grande, comprar carro Campo Grande MS, seminovos Campo Grande, motos Campo Grande, camionetes Campo Grande, revendedores Campo Grande, repasse Campo Grande, StockAuto, marketplace veículos MS" />
         <meta name="author" content="StockAuto" />
         <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -27,54 +30,22 @@
         <!-- Google Search Console verification (preencher com o código depois de criar a conta) -->
         <!-- <meta name="google-site-verification" content="SEU_CODIGO_AQUI" /> -->
 
-        <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="StockAuto" />
-        <meta property="og:locale" content="pt_BR" />
-        <meta property="og:title" content="StockAuto | Classificados de Veículos e Repasse em Campo Grande - MS" />
-        <meta property="og:description" content="Classificados de veículos seminovos e Hub de Repasse B2B em Campo Grande, MS. Contato direto via WhatsApp." />
-        <meta property="og:url" content="https://stockauto.com.br/" />
-        <meta property="og:image" content="https://stockauto.com.br/og-default.jpg" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content="StockAuto — Classificados de veículos e repasse em Campo Grande, MS" />
-
-        <!-- Twitter Cards -->
+        <!-- Twitter Cards default (site-level fallback; per-page tags via Helmet) -->
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="StockAuto — Veículos em Campo Grande, MS" />
-        <meta name="twitter:description" content="Compre direto do revendedor em Campo Grande/MS. Carros, motos e camionetes com contato via WhatsApp." />
-        <meta name="twitter:image" content="https://stockauto.com.br/og-default.jpg" />
 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
 
-        <!-- JSON-LD: Organization + AutoDealer (cobertura nacional, capitais atendidas) -->
+        <!-- JSON-LD global (Organization + WebSite) — aplicável a todas as rotas.
+             AutoDealer/LocalBusiness específicos são emitidos por página via Helmet. -->
         <script type="application/ld+json">
         {
           "@context": "https://schema.org",
-          "@type": "AutoDealer",
+          "@type": "Organization",
           "name": "StockAuto",
           "url": "https://stockauto.com.br",
           "logo": "https://stockauto.com.br/logo-stockauto-dark.png",
-          "image": "https://stockauto.com.br/og-default.jpg",
-          "description": "Classificados de veículos seminovos e Hub de Repasse B2B em Campo Grande, Mato Grosso do Sul. Contato direto com revendedores via WhatsApp.",
-          "areaServed": {
-            "@type": "City",
-            "name": "Campo Grande",
-            "containedInPlace": { "@type": "State", "name": "Mato Grosso do Sul" }
-          },
-          "address": {
-            "@type": "PostalAddress",
-            "addressLocality": "Campo Grande",
-            "addressRegion": "MS",
-            "addressCountry": "BR"
-          },
-          "geo": {
-            "@type": "GeoCoordinates",
-            "latitude": -20.4697,
-            "longitude": -54.6201
-          },
           "sameAs": [
             "https://www.instagram.com/stockautobr",
             "https://www.facebook.com/stockautobr"

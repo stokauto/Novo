@@ -1,0 +1,51 @@
+{
+  "summary": "Tested the new Serviços section (backend + frontend), ServiceProfile mini-page, AdminPanel Serviços CRUD, /comece-agora landing, sitemap and legacy-route regressions. Backend: created /app/backend/tests/test_services_section.py with 29 tests (categories isolation, public list/filters, slug 404 for inactive/unknown, admin CRUD, unique_slug -2/-3, authz 401/403, sitemap). Full suite: 74 passed / 7 skipped (0 failures), including the pre-existing Repasse lock regression tests. Frontend: verified /servicos rendering, 17 category pills, category chip active state (teal #0E7C86), q search + empty state, card → profile navigation, dynamic Helmet title + LocalBusiness/BreadcrumbList JSON-LD, WhatsApp CTA link, copiar-link, 404 state, nav 'SERVIÇOS' teal on desktop + mobile drawer, full admin CRUD (create → public visibility → toggle inactive → hidden publicly → edit + slug regen → delete via confirm modal), and /comece-agora + /planos-agora alias with 2 plans, 4-item FAQ and all CTAs → /cadastro. No blocking defects found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/services", "issue": "No pagination/total count; `limit` is unbounded (limit=100000 accepted). Consider max cap."},
+      {"endpoint": "PUT /api/admin/services/{sid}", "issue": "Multipart-only (Form) — no JSON support; partial updates work but empty string is indistinguishable from 'not sent' for optional fields."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/servicos/:slug (ServiceProfile)", "issues": ["Duplicate/conflicting SEO tags: static index.html meta description + og:title/og:description remain in the DOM alongside the Helmet-injected dynamic ones (2 x meta[name=description], 2 x og:title). Crawlers may pick the stale generic StockAuto copy. Recommendation: remove/trim those tags from public/index.html (or keep only as fallback) since react-helmet-async cannot dedupe non-managed tags.", "Global JSON-LD (AutoDealer + WebSite) is emitted on the service profile page too, so 4 JSON-LD blocks exist; AutoDealer on a service company page is semantically wrong.", "Large empty vertical whitespace below 'Sobre a empresa' when the company has a short description and no cover/logo (hero renders a bare gradient)."]},
+      {"screen": "/comece-agora", "issues": ["Hardcoded marketing stats ('500+ ANÚNCIOS ATIVOS', '24/7') are not backed by data; CTA says 'GRÁTIS PARA TESTAR' while both plans are paid (Avulso R$29,90 / Loja R$250) — potentially misleading copy."]},
+      {"screen": "AdminPanel → Serviços form", "issues": ["Validation relies on native HTML required tooltips (browser-locale English 'Please fill out this field.') instead of localized inline error messages."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_services_section.py",
+    "/app/backend/tests/test_repasse_privacy_regional.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "SEO: remove duplicate static meta description / og:title / og:description from /app/frontend/public/index.html (or scope them as fallback only) so Helmet values are unambiguous on /servicos/:slug.",
+    "Consider not emitting the global AutoDealer JSON-LD on Serviços pages (only LocalBusiness + BreadcrumbList).",
+    "Review /comece-agora copy: unverified '500+ anúncios' stat and 'grátis para testar' claim vs paid plans.",
+    "Optional: cap the `limit` param of GET /api/services and add localized inline validation in ServiceFormModal.",
+    "Optional: split AdminPanel.jsx (1284 lines) into per-tab modules — exceeds the 700-line guideline."
+  ],
+  "critical_code_review_comments": [
+    "Serviços taxonomy/collection is correctly isolated: SERVICE_CATEGORIES has the 16 required codes, no overlap with vehicle CATEGORIES, data lives in db.services and public payloads exclude _id.",
+    "unique_slug on db.services behaves correctly for create (-2, -3) and regenerates only when name or city changes (verified by tests).",
+    "Admin endpoints properly gated by get_admin_user (401 anon, 403 dealer) for GET/POST/PUT/DELETE.",
+    "AdminPanel.jsx is 1284 lines and server.py 1798 lines — both above the 700-line modularity guideline."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_services_section.py",
+    "/app/frontend/src/pages/Services.jsx",
+    "/app/frontend/src/components/Layout.jsx",
+    "/app/frontend/src/pages/AdminPanel.jsx"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created and removed TEST_* service companies via /api/admin/services during pytest (auto-cleanup fixture) and 'TEST UI Empresa QA' via the admin UI (deleted at the end). DB left with the 2 original companies (Oficina Central MS, Funilaria Do Zé). One TEST dealer account (TEST_dealer_*@example.com) is created per pytest run for the 403 checks and is NOT deleted (no delete-self endpoint).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@stockauto.com / Admin@123 (cookie auth via POST /api/auth/login)",
+  "context_for_next_testing_agent": "Backend regression suite: /app/backend/tests/ (74 pass, 7 skip) — run `cd /app/backend && python -m pytest tests/ -q`. Services tests use multipart Form data (not JSON) and a requests.Session cookie jar. Frontend test ids added by QA: services-category-<code> (with data-active attr) on the category pills, nav-servicos-mobile on the mobile drawer link, apanel-confirm-delete / apanel-confirm-cancel on the admin ConfirmModal (delete uses an in-app modal, NOT window.confirm). Remaining untested by design: WhatsApp/Facebook link previews, image upload for logo/cover (no fixtures used).",
+  "rca_of_the_issue": "No functional defect found. The only substantive finding is SEO tag duplication on service profile pages: public/index.html ships static description/og tags, and react-helmet-async only manages tags it creates, so both the stale static and the fresh dynamic tags coexist in the DOM."
+}

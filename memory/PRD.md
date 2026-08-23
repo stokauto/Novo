@@ -16,6 +16,28 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
+### 23/Fev/2026 — Seção Serviços + Landing de vendas (3 etapas)
+- **ETAPA 1 — Seção Serviços** (isolada do classificados de veículos)
+  - Backend: constante `SERVICE_CATEGORIES` (16 códigos: mecanica, funilaria, eletrica, ar-condicionado, vidracaria, estetica, pneus, escapamento, guincho, seguros, financiamento, despachante, rastreamento, som-acessorios, locadora, vistoria); coleção `db.services` independente de `vehicles`
+  - Endpoints públicos: `GET /api/service-categories`, `GET /api/services` (com filtros category/q/city/uf/limit até 200), `GET /api/services/:slug_or_id`
+  - Endpoints ADM: `GET/POST/PUT/DELETE /api/admin/services` (multipart, com logo/cover via `upload_image_to_storage`); slug único auto-gerado por `unique_slug(db.services, ...)` (duplicidade → `-2`, `-3`)
+  - Frontend: nova rota `/servicos` (`Services.jsx`) com hero preto teal, busca, chips de 16 categorias; menu "SERVIÇOS" em `Layout.jsx` com destaque teal `#0E7C86` (desktop + mobile drawer) e ícone Wrench
+  - Admin: nova tab "Serviços" em `AdminPanel.jsx` (`ServicesTab` + `ServiceFormModal`) com CRUD completo — criar/editar/ativar/desativar/excluir, upload de logo (400×400) e capa (1600×600)
+- **ETAPA 2 — Mini-página `/servicos/:slug`** (SEO-ready client-side)
+  - `ServiceProfile.jsx` reaproveitando padrão do `DealerProfile.jsx`: cover, logo, categoria badge, título, cidade/UF, telefone, CTA WhatsApp verde, botão "Copiar link", cards laterais (Localização + Contato)
+  - SEO via Helmet: `title` dinâmico, `meta description`, canonical, `og:*`; JSON-LD `LocalBusiness` (@id, name, address, areaServed, knowsAbout, sameAs=WhatsApp) + `BreadcrumbList` (Início → Serviços → Categoria → Empresa)
+  - Sitemap.xml agora inclui `/servicos`, `/servicos?category=<code>` (todas 16), e `/servicos/<slug>` (até 3000)
+  - **Limitação SSR documentada**: ingress do preview roteia tudo não-`/api` diretamente ao SPA. Solução server-side bot-detector não é viável sem mudança de infra. Client-side (Helmet + JSON-LD) atende Google/Bing (renderizam JS). Preview de link em WhatsApp/Facebook usa fallback default do `index.html` — enhancement futuro: prerender estático via react-snap ou migração para Next.js
+- **ETAPA 3 — Landing de vendas `/comece-agora`** (com alias `/planos-agora` → 302)
+  - `LandingPlans.jsx` standalone (home intocada): hero preto com gradiente vermelho/dourado, strip factual (MS/PIX/24-7/0%), 6 benefícios, seção "planos" com 2 cards (Avulso + Loja) puxados de `/api/settings/public`, FAQ 4 itens `<details>`, CTA final. Todos os CTAs apontam para `/cadastro`
+  - JSON-LD `Product` com `offers` de cada plano
+- **Correções críticas pós-testing (iteration_4.json)**
+  - `public/index.html`: removidos `meta description`, todo bloco `og:*` estático, `twitter:title/description/image` e JSON-LD `AutoDealer` (que era global e semanticamente errado em páginas de serviços). Mantido apenas: `title` fallback, keywords, robots, geo, `twitter:card`, JSON-LD `Organization` + `WebSite`. Resultado verificado: 1 meta description, 1 og:title, 1 og:description por página
+  - Landing: substituídos stats hardcoded ("500+ anúncios") por dados factuais; CTA "grátis para testar" → "Cadastrar minha loja agora"
+  - `ServiceFormModal`: removidos `required` HTML5 (tooltip em inglês) — validação PT-BR já existente via `setError`
+  - Backend: `limit` do `GET /api/services` capado em 200
+- **Testing**: `iteration_4.json` — pytest 74/0 (backend), 100% frontend flows OK
+
 ### 12/Jan/2026 — Hub de Repasse B2B + Melhorias críticas
 - **Bugs corrigidos:**
   - **Mensagem de erro em PT-BR**: handler global `RequestValidationError` traduz mensagens Pydantic comuns ("Input should be a valid integer..." → "Quilometragem: Este campo aceita apenas números inteiros (sem casas decimais).")

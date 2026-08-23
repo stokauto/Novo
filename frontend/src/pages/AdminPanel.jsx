@@ -2,18 +2,20 @@
 import { useEffect, useState, useCallback } from "react";
 import api, { fileUrl } from "@/lib/api";
 import PanelLayout from "@/components/PanelLayout";
-import { APANEL } from "@/constants/testIds";
+import { APANEL, APANEL_SVC } from "@/constants/testIds";
 import { brl, km, UF_STATES } from "@/lib/format";
 import {
   LayoutDashboard, Users, Car, Bell, Settings as SettingsIcon,
   Check, X, Trash2, Store, Clock, CheckCircle2, RefreshCw, ArrowRight, Image as ImageIcon,
   Pencil, Eye, EyeOff, GalleryHorizontal, ChevronUp, ChevronDown, ExternalLink, Plus,
+  Wrench,
 } from "lucide-react";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, testId: APANEL.tabDashboard },
   { key: "dealers", label: "Revendedores", icon: Users, testId: APANEL.tabDealers },
   { key: "vehicles", label: "Moderação", icon: Car, testId: APANEL.tabVehicles },
+  { key: "services", label: "Serviços", icon: Wrench, testId: APANEL.tabServices },
   { key: "banners", label: "Banners", icon: GalleryHorizontal, testId: APANEL.tabBanners },
   { key: "notifications", label: "Notificações", icon: Bell, testId: APANEL.tabNotifications },
   { key: "settings", label: "Pagamento", icon: SettingsIcon, testId: APANEL.tabSettings },
@@ -48,6 +50,7 @@ export default function AdminPanel() {
       {tab === "dashboard" && <DashboardTab stats={stats} onGo={setTab} />}
       {tab === "dealers" && <DealersTab onChanged={loadStats} />}
       {tab === "vehicles" && <VehiclesTab onChanged={loadStats} />}
+      {tab === "services" && <ServicesTab />}
       {tab === "banners" && <BannersTab />}
       {tab === "notifications" && <NotificationsTab onChanged={loadStats} />}
       {tab === "settings" && <SettingsTab />}
@@ -803,6 +806,322 @@ function SettingsTab() {
   );
 }
 
+/* ---------------------------------------------------------------- Services */
+function ServicesTab() {
+  const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, {...} = edit
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get("/admin/services").then(({ data }) => setItems(data)).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.get("/service-categories").then(({ data }) => setCategories(data)).catch(() => {});
+  }, []);
+
+  const toggleActive = async (s) => {
+    const fd = new FormData();
+    fd.append("active", String(!s.active));
+    await api.put(`/admin/services/${s.id}`, fd);
+    load();
+  };
+
+  const remove = async (id) => {
+    await api.delete(`/admin/services/${id}`);
+    setConfirmDelete(null);
+    load();
+  };
+
+  const filtered = filter === "all" ? items : items.filter((s) => s.category === filter);
+  const catLabel = (code) => categories.find((c) => c.code === code)?.label || code;
+
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Empresas de serviços</div>
+          <p className="text-sm text-zinc-600 mt-1 max-w-2xl">
+            Cadastro exclusivo do administrador. Ao criar, uma mini-página pública é gerada em{" "}
+            <code className="bg-zinc-100 px-1.5 py-0.5 text-xs">/servicos/&lt;slug&gt;</code>.
+          </p>
+        </div>
+        <button
+          data-testid={APANEL_SVC.newBtn}
+          onClick={() => setEditing({})}
+          className="inline-flex items-center gap-2 text-white px-5 h-11 font-bold uppercase tracking-tight text-sm hover:opacity-90"
+          style={{ backgroundColor: "#0E7C86" }}
+        >
+          <Plus size={16} /> Nova empresa
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <FilterPills
+          options={[
+            { k: "all", label: `Todas (${items.length})` },
+            ...categories.map((c) => ({
+              k: c.code,
+              label: `${c.label} (${items.filter((s) => s.category === c.code).length})`,
+            })),
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
+      </div>
+
+      {loading ? (
+        <div className="mt-8 text-zinc-500">Carregando…</div>
+      ) : filtered.length === 0 ? (
+        <Empty label="Nenhuma empresa cadastrada nesta categoria." />
+      ) : (
+        <div className="mt-6 border border-zinc-200 divide-y divide-zinc-200 bg-white">
+          {filtered.map((s) => (
+            <div key={s.id} data-testid={APANEL_SVC.row(s.id)} className="p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-zinc-50">
+              <div className="w-14 h-14 bg-zinc-100 flex items-center justify-center flex-shrink-0 overflow-hidden border border-zinc-200">
+                {s.logo_path ? (
+                  <img src={fileUrl(s.logo_path)} alt={s.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Wrench size={18} className="text-zinc-400" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold tracking-tight truncate">{s.name}</span>
+                  <span
+                    className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 text-white"
+                    style={{ backgroundColor: "#0E7C86" }}
+                  >
+                    {catLabel(s.category)}
+                  </span>
+                  <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 ${s.active ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-600"}`}>
+                    {s.active ? "Ativa" : "Inativa"}
+                  </span>
+                </div>
+                <div className="text-xs text-zinc-500 mt-1 truncate">
+                  {s.city}/{s.uf} · {s.phone || "sem telefone"} · slug: <code className="bg-zinc-100 px-1">{s.slug}</code>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <a
+                  href={`/servicos/${s.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 border border-zinc-300 hover:border-black px-3 h-9 text-xs font-bold uppercase tracking-tight"
+                >
+                  <ExternalLink size={14} /> Abrir
+                </a>
+                <button
+                  data-testid={APANEL_SVC.toggle(s.id)}
+                  onClick={() => toggleActive(s)}
+                  className={`px-3 h-9 text-xs font-bold uppercase tracking-tight border ${s.active ? "border-zinc-300 hover:border-[#FF3B30] hover:text-[#FF3B30]" : "border-zinc-300 hover:border-emerald-600 hover:text-emerald-600"}`}
+                >
+                  {s.active ? "Desativar" : "Ativar"}
+                </button>
+                <button data-testid={APANEL_SVC.edit(s.id)} onClick={() => setEditing(s)}
+                  className="p-2.5 border border-zinc-300 hover:border-black" aria-label="Editar">
+                  <Pencil size={16} />
+                </button>
+                <button data-testid={APANEL_SVC.delete(s.id)} onClick={() => setConfirmDelete(s)}
+                  className="p-2.5 border border-zinc-300 hover:border-[#FF3B30] hover:text-[#FF3B30]" aria-label="Excluir">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <ServiceFormModal
+          service={Object.keys(editing).length ? editing : null}
+          categories={categories}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir empresa de serviço?"
+          body={`Remover "${confirmDelete.name}"? A mini-página pública será excluída. Esta ação não pode ser desfeita.`}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => remove(confirmDelete.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ServiceFormModal({ service, categories, onClose, onSaved }) {
+  const isEdit = !!service;
+  const [form, setForm] = useState({
+    name: service?.name || "",
+    category: service?.category || (categories[0]?.code || ""),
+    description: service?.description || "",
+    phone: service?.phone || "",
+    whatsapp: service?.whatsapp || "",
+    city: service?.city || "Campo Grande",
+    uf: service?.uf || "MS",
+    address: service?.address || "",
+    active: service?.active ?? true,
+  });
+  const [logoFile, setLogoFile] = useState(null);
+  const [coverFile, setCoverFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!form.name.trim()) { setError("Informe o nome da empresa."); return; }
+    if (!form.category) { setError("Selecione uma categoria."); return; }
+    if (!form.city.trim() || !form.uf.trim()) { setError("Informe cidade e UF."); return; }
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, typeof v === "boolean" ? String(v) : v));
+      if (logoFile) fd.append("logo", logoFile);
+      if (coverFile) fd.append("cover", coverFile);
+      if (isEdit) {
+        await api.put(`/admin/services/${service.id}`, fd);
+      } else {
+        await api.post("/admin/services", fd);
+      }
+      onSaved?.();
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Erro ao salvar empresa.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="bg-white max-w-2xl w-full" data-testid="apanel-service-modal">
+        <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between z-10">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">
+              {isEdit ? "Editar empresa" : "Nova empresa"}
+            </div>
+            <div className="text-2xl font-black tracking-tighter" style={{ fontFamily: "Cabinet Grotesk" }}>
+              Serviços
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-zinc-100" aria-label="Fechar"><X size={20} /></button>
+        </div>
+
+        <form onSubmit={submit} className="p-6 space-y-5">
+          {error && <div className="border-l-4 border-[#FF3B30] bg-red-50 text-red-700 text-sm px-4 py-2">{error}</div>}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Nome da empresa">
+              <input data-testid={APANEL_SVC.formName} value={form.name} onChange={(e) => set("name", e.target.value)}
+                maxLength={120}
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+            </Field>
+            <Field label="Categoria de serviço">
+              <select data-testid={APANEL_SVC.formCategory} value={form.category} onChange={(e) => set("category", e.target.value)}
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white">
+                {categories.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Telefone">
+              <input data-testid={APANEL_SVC.formPhone} value={form.phone} onChange={(e) => set("phone", e.target.value)}
+                placeholder="(67) 99999-9999"
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+            </Field>
+            <Field label="WhatsApp">
+              <input data-testid={APANEL_SVC.formWhatsapp} value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)}
+                placeholder="(67) 99999-9999"
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+            </Field>
+            <Field label="Cidade">
+              <input data-testid={APANEL_SVC.formCity} value={form.city} onChange={(e) => set("city", e.target.value)}
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+            </Field>
+            <Field label="UF">
+              <select data-testid={APANEL_SVC.formUf} value={form.uf} onChange={(e) => set("uf", e.target.value)}
+                className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white">
+                {UF_STATES.map((u) => <option key={u.code} value={u.code}>{u.code} - {u.name}</option>)}
+              </select>
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Endereço completo">
+                <input data-testid={APANEL_SVC.formAddress} value={form.address} onChange={(e) => set("address", e.target.value)}
+                  placeholder="Rua, número, bairro"
+                  className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white" />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label="Descrição da empresa">
+                <textarea data-testid={APANEL_SVC.formDescription} value={form.description} onChange={(e) => set("description", e.target.value)}
+                  rows={4} maxLength={800}
+                  placeholder="Serviços oferecidos, diferenciais, horário de atendimento..."
+                  className="w-full px-4 py-3 border border-zinc-300 focus:border-black outline-none" />
+              </Field>
+            </div>
+            <Field label={`Logo ${isEdit ? "(deixe vazio p/ manter)" : "(quadrado, ideal 400×400)"}`}>
+              <input
+                data-testid={APANEL_SVC.formLogo}
+                type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                className="w-full text-sm file:mr-3 file:px-4 file:py-2 file:border file:border-zinc-300 file:bg-white file:font-bold file:uppercase file:text-xs file:tracking-tight hover:file:border-black"
+              />
+              {isEdit && service.logo_path && !logoFile && (
+                <div className="mt-2 w-16 h-16 bg-zinc-100 overflow-hidden border border-zinc-200">
+                  <img src={fileUrl(service.logo_path)} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </Field>
+            <Field label={`Foto de capa ${isEdit ? "(deixe vazio p/ manter)" : "(horizontal, ideal 1600×600)"}`}>
+              <input
+                data-testid={APANEL_SVC.formCover}
+                type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                className="w-full text-sm file:mr-3 file:px-4 file:py-2 file:border file:border-zinc-300 file:bg-white file:font-bold file:uppercase file:text-xs file:tracking-tight hover:file:border-black"
+              />
+              {isEdit && service.cover_path && !coverFile && (
+                <div className="mt-2 w-full h-24 bg-zinc-100 overflow-hidden border border-zinc-200">
+                  <img src={fileUrl(service.cover_path)} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </Field>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              data-testid={APANEL_SVC.formActive}
+              type="checkbox"
+              checked={form.active}
+              onChange={(e) => set("active", e.target.checked)}
+              className="w-5 h-5 accent-black"
+            />
+            <span className="text-sm font-bold uppercase tracking-tight">Empresa ativa (visível em /servicos)</span>
+          </label>
+
+          <div className="flex gap-3 pt-2 border-t border-zinc-200">
+            <button type="button" onClick={onClose} className="flex-1 h-12 border border-zinc-300 hover:border-black font-bold uppercase tracking-tight">Cancelar</button>
+            <button
+              data-testid={APANEL_SVC.formSubmit}
+              type="submit"
+              disabled={saving}
+              className="flex-1 h-12 text-white font-bold uppercase tracking-tight disabled:opacity-60 hover:opacity-90"
+              style={{ backgroundColor: "#0E7C86" }}
+            >
+              {saving ? "Salvando…" : isEdit ? "Salvar alterações" : "Criar empresa"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- Shared */
 function FilterPills({ options, value, onChange, testId }) {
   return (
@@ -837,8 +1156,8 @@ function ConfirmModal({ title, body, onCancel, onConfirm }) {
         <div className="text-xl font-black tracking-tighter">{title}</div>
         <div className="mt-2 text-sm text-zinc-600">{body}</div>
         <div className="mt-6 flex gap-3">
-          <button onClick={onCancel} className="flex-1 h-11 border border-zinc-300 font-bold uppercase tracking-tight text-sm">Cancelar</button>
-          <button onClick={onConfirm} className="flex-1 h-11 bg-[#FF3B30] hover:bg-[#E13128] text-white font-bold uppercase tracking-tight text-sm">Excluir</button>
+          <button data-testid="apanel-confirm-cancel" onClick={onCancel} className="flex-1 h-11 border border-zinc-300 font-bold uppercase tracking-tight text-sm">Cancelar</button>
+          <button data-testid="apanel-confirm-delete" onClick={onConfirm} className="flex-1 h-11 bg-[#FF3B30] hover:bg-[#E13128] text-white font-bold uppercase tracking-tight text-sm">Excluir</button>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { NAV } from "@/constants/testIds";
-import { Menu, X, ChevronRight, Instagram, Facebook } from "lucide-react";
+import { Menu, X, ChevronRight, Instagram, Facebook, Wrench } from "lucide-react";
 
 const linkBase = "text-sm font-bold tracking-tight uppercase hover:opacity-60 transition-opacity";
 
@@ -38,6 +38,17 @@ export default function Layout({ children }) {
               <span aria-hidden>🔥</span> Ofertas
             </NavLink>
             <NavLink to="/revendedores" data-testid={NAV.revendedores} className={linkBase}>Revendedores</NavLink>
+            <NavLink
+              to="/servicos"
+              data-testid={NAV.servicos}
+              className={({ isActive }) =>
+                `text-sm font-bold uppercase tracking-tight transition-colors inline-flex items-center gap-1.5 text-[#0E7C86] hover:text-[#0A5A62] ${
+                  isActive ? "underline underline-offset-[6px] decoration-2" : ""
+                }`
+              }
+            >
+              <Wrench size={14} aria-hidden /> Serviços
+            </NavLink>
             <NavLink to="/planos" data-testid={NAV.planos} className={linkBase}>Anuncie</NavLink>
             {user && (user.role === "admin" || (user.role === "dealer" && user.plan_code === "loja" && user.status === "active")) && (
               <NavLink to="/repasse" data-testid="nav-repasse" className={`${linkBase} text-[#B5820E] hover:text-[#F5A623]`}>
@@ -79,6 +90,14 @@ export default function Layout({ children }) {
                 <span aria-hidden>🔥</span> Ofertas
               </NavLink>
               <NavLink onClick={() => setOpen(false)} to="/revendedores" className={linkBase}>Revendedores</NavLink>
+              <NavLink
+                onClick={() => setOpen(false)}
+                to="/servicos"
+                data-testid={`${NAV.servicos}-mobile`}
+                className="text-base font-bold uppercase tracking-tight text-[#0E7C86] hover:text-[#0A5A62] inline-flex items-center gap-1.5"
+              >
+                <Wrench size={16} aria-hidden /> Serviços
+              </NavLink>
               <NavLink onClick={() => setOpen(false)} to="/planos" className={linkBase}>Anuncie</NavLink>
               {user && (user.role === "admin" || (user.role === "dealer" && user.plan_code === "loja" && user.status === "active")) && (
                 <NavLink onClick={() => setOpen(false)} to="/repasse" className={`${linkBase} text-[#B5820E]`}>

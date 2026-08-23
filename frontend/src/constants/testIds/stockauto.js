@@ -5,6 +5,7 @@ export const NAV = {
   veiculos: 'nav-veiculos',
   revendedores: 'nav-revendedores',
   planos: 'nav-planos',
+  servicos: 'nav-servicos',
   login: 'nav-login',
   cadastro: 'nav-cadastro',
   painel: 'nav-painel',
@@ -132,6 +133,7 @@ export const APANEL = {
   tabDealers: 'apanel-tab-dealers',
   tabVehicles: 'apanel-tab-vehicles',
   tabBanners: 'apanel-tab-banners',
+  tabServices: 'apanel-tab-services',
   tabNotifications: 'apanel-tab-notifications',
   tabSettings: 'apanel-tab-settings',
   statDealers: 'apanel-stat-dealers',
@@ -166,4 +168,36 @@ export const APANEL = {
   settingsPlanAvulsoPrice: 'apanel-settings-plan-avulso-price',
   settingsPlanLojaPrice: 'apanel-settings-plan-loja-price',
   settingsSubmit: 'apanel-settings-submit',
+};
+
+// Nova seção Serviços (empresas prestadoras) — isolada do classificados de veículos
+export const SVC = {
+  navLink: 'nav-servicos',
+  page: 'services-page',
+  categoryFilter: 'services-category-filter',
+  searchInput: 'services-search-input',
+  searchSubmit: 'services-search-submit',
+  card: (id) => `service-card-${id}`,
+  profile: 'service-profile-page',
+};
+
+// Admin — CRUD de Serviços
+export const APANEL_SVC = {
+  newBtn: 'apanel-service-new',
+  row: (id) => `apanel-service-row-${id}`,
+  edit: (id) => `apanel-service-edit-${id}`,
+  delete: (id) => `apanel-service-delete-${id}`,
+  toggle: (id) => `apanel-service-toggle-${id}`,
+  formName: 'apanel-service-form-name',
+  formCategory: 'apanel-service-form-category',
+  formCity: 'apanel-service-form-city',
+  formUf: 'apanel-service-form-uf',
+  formPhone: 'apanel-service-form-phone',
+  formWhatsapp: 'apanel-service-form-whatsapp',
+  formAddress: 'apanel-service-form-address',
+  formDescription: 'apanel-service-form-description',
+  formActive: 'apanel-service-form-active',
+  formLogo: 'apanel-service-form-logo',
+  formCover: 'apanel-service-form-cover',
+  formSubmit: 'apanel-service-form-submit',
 };
