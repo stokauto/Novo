@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api, { fileUrl } from "@/lib/api";
@@ -6,7 +5,7 @@ import { brl, km, waLink, digits, txLabel, fuelLabel } from "@/lib/format";
 import WhatsAppButton, { WhatsAppIcon } from "@/components/WhatsAppButton";
 import SEO, { SITE_URL } from "@/components/SEO";
 import { DETAIL } from "@/constants/testIds";
-import { MapPin, Phone, Share2, Copy, ArrowLeft, Check, Calendar, Gauge, Fuel, Settings, Palette, ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
+import { MapPin, Phone, Share2, Copy, ArrowLeft, Check, Calendar, Gauge, Fuel, Settings, Palette, ChevronLeft, ChevronRight, X, ZoomIn, Play } from "lucide-react";
 
 export default function VehicleDetail() {
   const { slug } = useParams();
@@ -15,6 +14,7 @@ export default function VehicleDetail() {
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
 
   useEffect(() => {
     setV(null);
@@ -61,6 +61,7 @@ export default function VehicleDetail() {
 
   const photos = (v.photos && v.photos.length ? v.photos : v.main_photo ? [v.main_photo] : []).filter(Boolean);
   const photo = photos[active];
+  const videoPath = v.video || null;
   const dealer = v.dealer || {};
   const title = `${v.brand} ${v.model}${v.version ? " " + v.version : ""}`;
   const waMessage = `Olá! Tenho interesse no ${title} ${v.year_made}/${v.year_model} anunciado no StockAuto. Ainda está disponível?`;
@@ -184,7 +185,7 @@ export default function VehicleDetail() {
               <div className="w-full h-full flex items-center justify-center text-zinc-400">sem foto</div>
             )}
           </button>
-          {photos.length > 1 && (
+          {(photos.length > 1 || videoPath) && (
             <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
               {photos.map((p, i) => (
                 <button
@@ -197,6 +198,31 @@ export default function VehicleDetail() {
                   <img src={fileUrl(p)} alt={`foto ${i + 1}`} className="w-full h-full object-cover" />
                 </button>
               ))}
+              {videoPath && (
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen(true)}
+                  data-testid="detail-video-tile"
+                  className="relative aspect-square bg-black overflow-hidden border-2 border-transparent hover:border-[#FF3B30] group"
+                  aria-label="Assistir vídeo do veículo"
+                >
+                  <video
+                    src={fileUrl(videoPath)}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-11 h-11 bg-[#FF3B30] rounded-full flex items-center justify-center shadow-lg">
+                      <Play size={20} className="text-white ml-0.5" fill="white" />
+                    </div>
+                  </div>
+                  <span className="absolute bottom-1 left-1 bg-black/80 text-white text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5">
+                    Vídeo
+                  </span>
+                </button>
+              )}
             </div>
           )}
 
@@ -397,6 +423,32 @@ export default function VehicleDetail() {
           <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/80 text-sm font-bold">
             {active + 1} / {photos.length}
           </div>
+        </div>
+      )}
+
+      {/* VIDEO LIGHTBOX */}
+      {videoOpen && videoPath && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center px-4"
+          data-testid="detail-video-lightbox"
+          onClick={() => setVideoOpen(false)}
+        >
+          <button
+            onClick={() => setVideoOpen(false)}
+            data-testid="detail-video-close"
+            className="absolute top-5 right-5 text-white/80 hover:text-white p-2"
+            aria-label="Fechar vídeo"
+          >
+            <X size={28} />
+          </button>
+          <video
+            src={fileUrl(videoPath)}
+            controls
+            autoPlay
+            playsInline
+            className="max-h-[85vh] max-w-[95vw] w-auto bg-black"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

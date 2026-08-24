@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { DPANEL } from "@/constants/testIds";
 import { UF_LIST } from "@/lib/format";
 import PhotoUploader from "@/components/PhotoUploader";
+import VideoUploader from "@/components/VideoUploader";
 import { X, AlertCircle, CheckCircle2, Flame } from "lucide-react";
 
 const empty = {
@@ -22,6 +23,7 @@ const empty = {
   price: "",
   description: "",
   photos: [],
+  video: "",
   ad_type: "public",
   fipe_price: "",
   offer_price: "",
@@ -263,6 +265,17 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
               testid={DPANEL.vehicleFormPhotos}
               value={data.photos || []}
               onChange={(photos) => set("photos", photos)}
+            />
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-widest font-bold text-zinc-700 mb-2">
+              Vídeo <span className="text-zinc-400 font-normal normal-case tracking-normal">(opcional)</span>
+            </div>
+            <VideoUploader
+              testid="vehicle-form-video"
+              value={data.video || ""}
+              onChange={(v) => set("video", v)}
             />
           </div>
 

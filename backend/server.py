@@ -331,6 +331,33 @@ async def upload_image_to_storage(file: UploadFile, owner_id: str, watermark: bo
     return result["path"]
 
 
+# Vídeos aceitos no cadastro de anúncios (opcional, 1 por veículo).
+# Limite intencionalmente maior que fotos, mas sem processar/comprimir no backend.
+MAX_VIDEO_BYTES = 50 * 1024 * 1024  # 50 MB
+_VIDEO_EXT_TO_MIME = {
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "webm": "video/webm",
+    "m4v": "video/mp4",
+}
+
+
+async def upload_video_to_storage(file: UploadFile, owner_id: str) -> str:
+    filename = (file.filename or "video.mp4").lower()
+    ext = filename.split(".")[-1]
+    if ext not in _VIDEO_EXT_TO_MIME:
+        raise HTTPException(status_code=400, detail="Formato de vídeo não suportado. Use MP4, MOV ou WEBM.")
+    data = await file.read()
+    if len(data) > MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="Vídeo muito grande (máximo 50 MB).")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Arquivo de vídeo vazio.")
+    path = f"{APP_NAME}/uploads/{owner_id}/video-{uuid.uuid4()}.{ext}"
+    content_type = file.content_type or _VIDEO_EXT_TO_MIME[ext]
+    result = put_object(path, data, content_type)
+    return result["path"]
+
+
 # ============================================================================
 # WATERMARK
 # ============================================================================
@@ -441,6 +468,7 @@ class VehicleIn(BaseModel):
     price: Optional[float] = None  # None => "Consultar Valor". For repasse, this is the offer/repasse price.
     description: Optional[str] = ""
     photos: Optional[List[str]] = []  # storage paths
+    video: Optional[str] = None  # single storage path (mp4/mov/webm), optional
     # Repasse B2B fields ------------------------------------------------------
     ad_type: Literal["public", "repasse"] = "public"
     fipe_price: Optional[float] = None  # FIPE reference value, only used when ad_type == "repasse"
@@ -891,6 +919,13 @@ async def dealer_upload_cover(file: UploadFile = File(...), user: dict = Depends
 async def dealer_upload_image(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     require_dealer(user)
     path = await upload_image_to_storage(file, user["id"], watermark=True)
+    return {"path": path}
+
+
+@api.post("/dealer/upload-video")
+async def dealer_upload_video(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    require_dealer(user)
+    path = await upload_video_to_storage(file, user["id"])
     return {"path": path}
 
 
