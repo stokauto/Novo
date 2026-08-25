@@ -129,9 +129,7 @@ export default function Layout({ children }) {
       <footer className="bg-black text-white mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 grid grid-cols-1 md:grid-cols-4 gap-10">
           <div className="md:col-span-2">
-            <div className="inline-block bg-white p-3">
-              <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-12 w-auto block" />
-            </div>
+            <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-12 w-auto" />
             <p className="mt-5 text-zinc-400 max-w-md leading-relaxed">
               Classificados de veículos seminovos em Campo Grande e todo o Mato Grosso do Sul.
               Anúncios verificados, contato direto via WhatsApp e Hub de Repasse B2B para lojistas.

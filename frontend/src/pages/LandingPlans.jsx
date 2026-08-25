@@ -65,8 +65,8 @@ export default function LandingPlans() {
   return (
     <div>
       <SEO
-        title="Anuncie no StockAuto — Planos para Lojistas em Campo Grande/MS"
-        description="Publique seus veículos no marketplace #1 de Campo Grande - MS. Planos trimestrais a partir do valor mais competitivo da região. Contato direto via WhatsApp, sem taxas por lead."
+        title="Anuncie seu veículo em Campo Grande - MS | StockAuto"
+        description="Anuncie 1 carro ou o estoque inteiro da sua loja por 90 dias no StockAuto. Lead direto no WhatsApp, sem taxa por venda e sem comissão. Marketplace focado em Campo Grande - MS."
         canonical="/comece-agora"
         jsonLd={offerJsonLd}
       />
@@ -84,17 +84,18 @@ export default function LandingPlans() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] font-bold" style={{ color: ACCENT }}>
               <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: ACCENT }} />
-              Vagas limitadas — Campo Grande, MS
+              Marketplace de Campo Grande — MS
             </div>
             <h1
               className="mt-5 text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[0.9]"
               style={{ fontFamily: "Cabinet Grotesk, Inter, sans-serif" }}
             >
-              Sua loja no maior marketplace de <span style={{ color: ACCENT }}>Campo Grande</span>
+              Anuncie seu veículo por <span style={{ color: ACCENT }}>90 dias</span> em Campo Grande
             </h1>
             <p className="mt-6 text-lg md:text-xl text-zinc-300 max-w-2xl leading-relaxed">
-              Lead direto no WhatsApp. Sem taxa por venda. Sem comissão. Sem burocracia.
-              Publique seu estoque em minutos e apareça no Google para compradores da sua região.
+              Vendendo 1 carro ou tocando uma loja inteira, o StockAuto entrega lead direto no seu
+              WhatsApp — sem taxa por venda, sem comissão, sem burocracia. Publique em minutos e
+              apareça no Google pra quem procura na sua região.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row gap-3">
               <Link
@@ -103,7 +104,7 @@ export default function LandingPlans() {
                 className="inline-flex items-center justify-center gap-2 text-white px-8 h-14 font-bold uppercase tracking-tight text-base hover:opacity-90 transition-opacity"
                 style={{ backgroundColor: ACCENT }}
               >
-                Cadastrar minha loja agora <ArrowRight size={18} />
+                Anunciar agora <ArrowRight size={18} />
               </Link>
               <a
                 href="#planos"
@@ -113,9 +114,9 @@ export default function LandingPlans() {
               </a>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-400">
-              <span className="inline-flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Ativação em minutos</span>
+              <span className="inline-flex items-center gap-2"><Check size={14} className="text-emerald-400" /> 90 dias de publicação</span>
+              <span className="inline-flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Do plano Avulso ao Loja</span>
               <span className="inline-flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Pague por PIX</span>
-              <span className="inline-flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Cancele quando quiser</span>
             </div>
           </div>
         </div>
