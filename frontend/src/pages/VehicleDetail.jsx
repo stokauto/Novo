@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api, { fileUrl } from "@/lib/api";
-import { brl, km, waLink, digits, txLabel, fuelLabel } from "@/lib/format";
+import { brl, vehiclePrice, km, waLink, digits, txLabel, fuelLabel } from "@/lib/format";
 import WhatsAppButton, { WhatsAppIcon } from "@/components/WhatsAppButton";
 import SEO, { SITE_URL } from "@/components/SEO";
 import { DETAIL } from "@/constants/testIds";
@@ -266,10 +266,10 @@ export default function VehicleDetail() {
 
           <div
             data-testid={DETAIL.price}
-            className="mt-6 text-4xl font-black tracking-tighter text-[#FF3B30]"
+            className={`mt-6 text-4xl font-black tracking-tighter ${Number(v.price) > 0 ? "text-[#FF3B30]" : "text-zinc-500"}`}
             style={{ fontFamily: "Cabinet Grotesk" }}
           >
-            {brl(v.price)}
+            {vehiclePrice(v.price)}
           </div>
 
           {dealer.whatsapp && (
@@ -351,8 +351,8 @@ export default function VehicleDetail() {
         <div className="fixed md:hidden bottom-0 left-0 right-0 z-40 bg-white border-t border-zinc-200 p-3 flex items-center gap-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
           <div className="flex-1 min-w-0">
             <div className="text-[10px] uppercase tracking-widest text-zinc-500">Preço</div>
-            <div className="text-base font-black tracking-tighter text-[#FF3B30] truncate" style={{ fontFamily: "Cabinet Grotesk" }}>
-              {brl(v.price)}
+            <div className={`text-base font-black tracking-tighter truncate ${Number(v.price) > 0 ? "text-[#FF3B30]" : "text-zinc-500"}`} style={{ fontFamily: "Cabinet Grotesk" }}>
+              {vehiclePrice(v.price)}
             </div>
           </div>
           {dealer.phone && (

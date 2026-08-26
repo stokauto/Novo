@@ -95,6 +95,51 @@ export default function VehicleForm({ initial, onClose, onSaved }) {
       return;
     }
 
+    // Plausibility validation — mirrors the backend Pydantic validators so o usuário
+    // recebe feedback imediato em PT-BR, sem depender do tooltip nativo do navegador.
+    const currentYear = new Date().getFullYear();
+    const ym = Number(data.year_made);
+    const yr = Number(data.year_model);
+    if (ym && (ym < 1900 || ym > currentYear + 1)) {
+      showError(`Ano de fabricação deve estar entre 1900 e ${currentYear + 1}.`);
+      return;
+    }
+    if (yr && (yr < 1900 || yr > currentYear + 2)) {
+      showError(`Ano modelo deve estar entre 1900 e ${currentYear + 2}.`);
+      return;
+    }
+    if (ym && yr && yr < ym) {
+      showError("Ano modelo não pode ser anterior ao ano de fabricação.");
+      return;
+    }
+    if (data.km !== "" && data.km !== null && data.km !== undefined) {
+      const kmn = Number(String(data.km).replace(/[^0-9-]/g, ""));
+      if (Number.isFinite(kmn) && kmn < 0) {
+        showError("Quilometragem não pode ser negativa.");
+        return;
+      }
+    }
+    if (data.price !== "" && data.price !== null && data.price !== undefined) {
+      const pn = Number(data.price);
+      if (Number.isFinite(pn) && pn < 0) {
+        showError("Preço não pode ser negativo.");
+        return;
+      }
+    }
+    if (data.ad_type !== "repasse"
+        && data.offer_price !== "" && data.offer_price !== null && data.offer_price !== undefined) {
+      const on = Number(data.offer_price);
+      const pn = Number(data.price);
+      if (Number.isFinite(on) && on !== 0 && on <= 0) {
+        showError("Valor da oferta deve ser maior que zero.");
+        return;
+      }
+      if (Number.isFinite(on) && on > 0 && Number.isFinite(pn) && pn > 0 && on >= pn) {
+        showError("Valor da oferta deve ser menor que o preço original.");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const toInt = (v) => {

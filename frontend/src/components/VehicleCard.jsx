@@ -1,15 +1,19 @@
 import { Link } from "react-router-dom";
-import { brl, km } from "@/lib/format";
+import { brl, vehiclePrice, km } from "@/lib/format";
 import { fileUrl } from "@/lib/api";
 import { MapPin, Flame } from "lucide-react";
 
 export default function VehicleCard({ v, testIdBuilder }) {
   const photo = v.main_photo || (v.photos && v.photos[0]);
   const img = fileUrl(photo);
-  const offer = Number(v.offer_price) || 0;
-  const price = Number(v.price) || 0;
-  const hasOffer = offer > 0 && price > 0 && offer < price;
-  const discountPct = hasOffer ? Math.round((1 - offer / price) * 100) : 0;
+  const priceNum = Number(v.price);
+  const offerNum = Number(v.offer_price);
+  const validPrice = Number.isFinite(priceNum) && priceNum > 0;
+  const validOffer = Number.isFinite(offerNum) && offerNum > 0;
+  // Oferta só é válida se preço e oferta são positivos E oferta < preço.
+  // Ofertas com offer_price >= price ou sem preço original não aparecem como promoção.
+  const hasOffer = validPrice && validOffer && offerNum < priceNum;
+  const discountPct = hasOffer ? Math.round((1 - offerNum / priceNum) * 100) : 0;
 
   return (
     <Link
@@ -62,20 +66,20 @@ export default function VehicleCard({ v, testIdBuilder }) {
         <div className="mt-auto pt-5">
           {hasOffer ? (
             <>
-              <div className="text-sm text-zinc-500 line-through decoration-2">{brl(price)}</div>
+              <div className="text-sm text-zinc-500 line-through decoration-2">{brl(priceNum)}</div>
               <div
                 className="text-2xl font-black tracking-tight text-[#FF3B30]"
                 style={{ fontFamily: "Cabinet Grotesk, Inter, sans-serif" }}
               >
-                {brl(offer)}
+                {brl(offerNum)}
               </div>
             </>
           ) : (
             <div
-              className={`text-xl font-black tracking-tight ${price ? "text-black" : "text-zinc-400"}`}
+              className={`text-xl font-black tracking-tight ${validPrice ? "text-black" : "text-zinc-400"}`}
               style={{ fontFamily: "Cabinet Grotesk, Inter, sans-serif" }}
             >
-              {brl(price)}
+              {vehiclePrice(v.price)}
             </div>
           )}
         </div>

@@ -114,8 +114,11 @@ async def pt_br_validation_handler(request: Request, exc: RequestValidationError
     msgs = []
     for e in errors[:3]:
         loc = [x for x in e.get("loc", ()) if x != "body"]
-        field_path = ".".join(str(x) for x in loc)
-        label = _FIELD_LABELS.get(loc[-1] if loc else "", field_path or "campo")
+        field_key = loc[-1] if loc else ""
+        label = _FIELD_LABELS.get(field_key, "")
+        # Fallback: use the raw field path only when it points to a real field
+        if not label and field_key:
+            label = ".".join(str(x) for x in loc)
         msg = _translate_validation_msg(e.get("msg", ""))
         msgs.append(f"{label}: {msg}" if label else msg)
     return JSONResponse(status_code=422, content={"detail": " • ".join(msgs)})

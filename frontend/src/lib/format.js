@@ -5,6 +5,15 @@ export function brl(value) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 }
 
+// Preço de veículo: trata null/undefined/""/0/negativo como "Consultar valor".
+// Evita renderizar "R$ 0,00" como se fosse um valor válido no card/detalhe.
+export function vehiclePrice(value) {
+  if (value === null || value === undefined || value === "") return "Consultar valor";
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "Consultar valor";
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
+}
+
 export function km(value) {
   if (value === null || value === undefined || value === "") return "—";
   return Number(value).toLocaleString("pt-BR") + " km";
