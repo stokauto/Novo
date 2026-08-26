@@ -1,6 +1,7 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { fileUrl } from "@/lib/api";
+import * as pushLib from "@/lib/push";
 import PanelLayout from "@/components/PanelLayout";
 import { APANEL, APANEL_SVC } from "@/constants/testIds";
 import { brl, km, UF_STATES } from "@/lib/format";
@@ -22,8 +23,24 @@ const TABS = [
 ];
 
 export default function AdminPanel() {
-  const [tab, setTab] = useState("dashboard");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") || "dashboard";
+  const validTab = TABS.some((t) => t.key === initialTab) ? initialTab : "dashboard";
+  const [tab, setTab] = useState(validTab);
   const [stats, setStats] = useState(null);
+
+  // Keep tab in sync with URL so clicks on push notifications deep-link correctly.
+  useEffect(() => {
+    const urlTab = searchParams.get("tab");
+    if (urlTab && urlTab !== tab && TABS.some((t) => t.key === urlTab)) setTab(urlTab);
+  }, [searchParams, tab]);
+
+  const changeTab = (next) => {
+    setTab(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === "dashboard") params.delete("tab"); else params.set("tab", next);
+    setSearchParams(params, { replace: true });
+  };
 
   const loadStats = useCallback(() => {
     api.get("/admin/stats").then(({ data }) => setStats(data)).catch(() => {});
@@ -38,7 +55,7 @@ export default function AdminPanel() {
       title="Controle StockAuto"
       tabs={TABS}
       activeTab={tab}
-      onTabChange={setTab}
+      onTabChange={changeTab}
       rightHeader={
         stats?.dealers_pending > 0 || stats?.vehicles_pending > 0 ? (
           <div className="inline-flex items-center gap-2 bg-[#FF3B30] text-white px-4 py-2 text-xs font-bold uppercase tracking-tight">
@@ -47,7 +64,7 @@ export default function AdminPanel() {
         ) : null
       }
     >
-      {tab === "dashboard" && <DashboardTab stats={stats} onGo={setTab} />}
+      {tab === "dashboard" && <DashboardTab stats={stats} onGo={changeTab} />}
       {tab === "dealers" && <DealersTab onChanged={loadStats} />}
       {tab === "vehicles" && <VehiclesTab onChanged={loadStats} />}
       {tab === "services" && <ServicesTab />}
@@ -635,6 +652,148 @@ function BannerFormModal({ banner, onClose, onSaved }) {
 }
 
 /* ---------------------------------------------------------------- Notifications */
+function PushSettings() {
+  const [status, setStatus] = useState({ configured: false, subscriptions: 0 });
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null); // { kind: 'ok'|'err', text: string }
+  const [permission, setPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await pushLib.getStatus();
+      setStatus(s);
+    } catch (_) {
+      setStatus({ configured: false, subscriptions: 0 });
+    }
+    setEnabled(await pushLib.isEnabledOnThisDevice());
+    if (typeof Notification !== "undefined") setPermission(Notification.permission);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const enable = async () => {
+    setBusy(true); setMsg(null);
+    const r = await pushLib.enablePush();
+    if (r.ok) setMsg({ kind: "ok", text: "Notificações ativadas neste dispositivo." });
+    else setMsg({ kind: "err", text: r.message });
+    await refresh();
+    setBusy(false);
+  };
+
+  const disable = async () => {
+    setBusy(true); setMsg(null);
+    const r = await pushLib.disablePush();
+    if (r.ok) setMsg({ kind: "ok", text: "Notificações desativadas neste dispositivo." });
+    else setMsg({ kind: "err", text: r.message });
+    await refresh();
+    setBusy(false);
+  };
+
+  const test = async () => {
+    setBusy(true); setMsg(null);
+    const r = await pushLib.sendTest();
+    if (r.ok) {
+      setMsg({
+        kind: r.sent > 0 ? "ok" : "err",
+        text: r.sent > 0
+          ? `Teste enviado para ${r.sent} dispositivo(s).`
+          : "Nenhum dispositivo ativo. Ative primeiro no botão acima.",
+      });
+    } else {
+      setMsg({ kind: "err", text: r.message });
+    }
+    setBusy(false);
+  };
+
+  const supported = pushLib.isPushSupported();
+
+  return (
+    <div data-testid="apanel-push-settings" className="mb-6 border-2 border-zinc-200 bg-zinc-50 p-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.25em] font-black text-zinc-500">
+            Notificações no celular
+          </div>
+          <div className="mt-1 font-black tracking-tight text-lg" style={{ fontFamily: "Cabinet Grotesk" }}>
+            Push nativo (Web Push)
+          </div>
+          <p className="text-sm text-zinc-600 mt-1 max-w-xl">
+            Receba um aviso instantâneo no seu celular sempre que houver um novo lojista
+            pendente ou um anúncio aguardando moderação.
+          </p>
+        </div>
+        <div className="text-xs text-zinc-500 uppercase tracking-widest font-bold">
+          {status.subscriptions} dispositivo(s) ativo(s)
+        </div>
+      </div>
+
+      {!supported && (
+        <div className="mt-4 border-l-4 border-amber-500 bg-amber-50 text-amber-800 text-sm px-4 py-3">
+          Este navegador não suporta notificações push. Abra o painel no Chrome/Edge/Firefox no Android
+          ou no Safari 16.4+ no iPhone/iPad.
+        </div>
+      )}
+
+      {supported && !status.configured && (
+        <div className="mt-4 border-l-4 border-amber-500 bg-amber-50 text-amber-800 text-sm px-4 py-3">
+          Notificações push ainda não configuradas no servidor.
+        </div>
+      )}
+
+      {supported && status.configured && permission === "denied" && (
+        <div className="mt-4 border-l-4 border-[#FF3B30] bg-red-50 text-red-700 text-sm px-4 py-3">
+          Você bloqueou as notificações neste navegador. Reative nas configurações do site do navegador
+          e tente novamente.
+        </div>
+      )}
+
+      {msg && (
+        <div className={`mt-4 border-l-4 text-sm px-4 py-3 ${msg.kind === "ok" ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-[#FF3B30] bg-red-50 text-red-700"}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {!enabled ? (
+          <button
+            data-testid="apanel-push-enable"
+            onClick={enable}
+            disabled={busy || !supported || !status.configured || permission === "denied"}
+            className="inline-flex items-center gap-2 bg-black text-white px-5 h-11 font-bold uppercase tracking-tight text-xs hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Bell size={14} /> Ativar notificações neste celular
+          </button>
+        ) : (
+          <>
+            <span data-testid="apanel-push-active-badge" className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 h-11 font-bold uppercase tracking-tight text-xs">
+              <Check size={14} /> Ativadas neste dispositivo
+            </span>
+            <button
+              data-testid="apanel-push-test"
+              onClick={test}
+              disabled={busy}
+              className="inline-flex items-center gap-2 border border-zinc-300 hover:border-black px-4 h-11 font-bold uppercase tracking-tight text-xs disabled:opacity-40"
+            >
+              Enviar teste
+            </button>
+            <button
+              data-testid="apanel-push-disable"
+              onClick={disable}
+              disabled={busy}
+              className="inline-flex items-center gap-2 border border-zinc-300 hover:border-[#FF3B30] hover:text-[#FF3B30] px-4 h-11 font-bold uppercase tracking-tight text-xs disabled:opacity-40"
+            >
+              Desativar aqui
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NotificationsTab({ onChanged }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -650,30 +809,41 @@ function NotificationsTab({ onChanged }) {
     load(); onChanged?.();
   };
 
-  if (loading) return <div className="mt-8 text-zinc-500">Carregando…</div>;
-  if (items.length === 0) return <Empty label="Nenhuma notificação." />;
-
   return (
-    <div className="border border-zinc-200 divide-y divide-zinc-200 bg-white">
-      {items.map((n) => (
-        <div key={n.id} data-testid={APANEL.notifRow(n.id)} className={`p-4 flex items-start gap-4 ${n.read ? "opacity-60" : ""}`}>
-          <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${n.read ? "bg-zinc-300" : "bg-[#FF3B30]"}`} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{n.type === "new_dealer" ? "Novo lojista" : n.type === "new_ad" ? "Novo anúncio" : n.type}</span>
+    <div>
+      <PushSettings />
+      {loading ? (
+        <div className="mt-8 text-zinc-500">Carregando…</div>
+      ) : items.length === 0 ? (
+        <Empty label="Nenhuma notificação." />
+      ) : (
+        <div className="border border-zinc-200 divide-y divide-zinc-200 bg-white">
+          {items.map((n) => (
+            <div key={n.id} data-testid={APANEL.notifRow(n.id)} className={`p-4 flex items-start gap-4 ${n.read ? "opacity-60" : ""}`}>
+              <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${n.read ? "bg-zinc-300" : "bg-[#FF3B30]"}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                    {n.type === "new_dealer" ? "Novo lojista"
+                      : n.type === "new_ad" ? "Novo anúncio"
+                      : n.type === "ad_edited" ? "Anúncio editado"
+                      : n.type}
+                  </span>
+                </div>
+                <div className="font-bold tracking-tight">{n.title}</div>
+                <div className="text-sm text-zinc-600">{n.body}</div>
+                <div className="text-xs text-zinc-400 mt-1">{new Date(n.created_at).toLocaleString("pt-BR")}</div>
+              </div>
+              {!n.read && (
+                <button data-testid={APANEL.notifMarkRead(n.id)} onClick={() => markRead(n.id)}
+                  className="inline-flex items-center gap-1 border border-zinc-300 hover:border-black px-3 h-9 text-xs font-bold uppercase tracking-tight">
+                  <Check size={14} /> Marcar lida
+                </button>
+              )}
             </div>
-            <div className="font-bold tracking-tight">{n.title}</div>
-            <div className="text-sm text-zinc-600">{n.body}</div>
-            <div className="text-xs text-zinc-400 mt-1">{new Date(n.created_at).toLocaleString("pt-BR")}</div>
-          </div>
-          {!n.read && (
-            <button data-testid={APANEL.notifMarkRead(n.id)} onClick={() => markRead(n.id)}
-              className="inline-flex items-center gap-1 border border-zinc-300 hover:border-black px-3 h-9 text-xs font-bold uppercase tracking-tight">
-              <Check size={14} /> Marcar lida
-            </button>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

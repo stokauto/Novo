@@ -25,6 +25,16 @@ from fastapi.responses import PlainTextResponse, Response as FastAPIResponse, JS
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from push_utils import (
+    count_subscriptions,
+    get_public_key,
+    is_configured as push_is_configured,
+    push_for_notification,
+    remove_subscription,
+    send_push_to_admins,
+    upsert_subscription,
+)
 from PIL import Image
 
 # ============================================================================
@@ -721,9 +731,10 @@ async def auth_register(body: RegisterIn, response: Response):
         "created_at": now_iso(),
     }
     await db.users.insert_one(user)
-    # Notification to admin
+    # Notification to admin (internal panel) — always created
+    notif_id = str(uuid.uuid4())
     await db.notifications.insert_one({
-        "id": str(uuid.uuid4()),
+        "id": notif_id,
         "type": "new_dealer",
         "title": f"Novo revendedor: {body.store_name}",
         "body": f"{body.store_name} ({body.city}/{body.uf.upper()}) escolheu o plano {plan['name']}.",
@@ -731,6 +742,16 @@ async def auth_register(body: RegisterIn, response: Response):
         "read": False,
         "created_at": now_iso(),
     })
+    # Best-effort push (never blocks or fails registration)
+    try:
+        await push_for_notification(
+            db, notif_id, "new_dealer",
+            "Nova pendência no StockAuto",
+            "Há um revendedor aguardando aprovação",
+            url="/admin", extra={"tab": "dealers"},
+        )
+    except Exception as e:
+        logger.warning(f"push notify (new_dealer) failed: {type(e).__name__}")
     set_auth_cookies(response, user_id)
     return public_user(user)
 
@@ -1065,8 +1086,9 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
         "updated_at": now_iso(),
     })
     await db.vehicles.insert_one(doc)
+    notif_id = str(uuid.uuid4())
     await db.notifications.insert_one({
-        "id": str(uuid.uuid4()),
+        "id": notif_id,
         "type": "new_ad",
         "title": f"Novo anúncio: {doc['brand']} {doc['model']} {doc['year_model']}",
         "body": (
@@ -1079,6 +1101,18 @@ async def dealer_create_vehicle(body: VehicleIn, user: dict = Depends(get_curren
         "read": False,
         "created_at": now_iso(),
     })
+    # Push only for public ads waiting for moderation. Repasse auto-publish
+    # doesn't require admin action, so no push is dispatched.
+    if body.ad_type != "repasse":
+        try:
+            await push_for_notification(
+                db, notif_id, "new_ad",
+                "Nova pendência no StockAuto",
+                "Há um anúncio aguardando moderação",
+                url="/admin", extra={"tab": "vehicles"},
+            )
+        except Exception as e:
+            logger.warning(f"push notify (new_ad) failed: {type(e).__name__}")
     return await db.vehicles.find_one({"id": vid}, {"_id": 0})
 
 
@@ -1097,9 +1131,32 @@ async def dealer_update_vehicle(vid: str, body: VehicleIn, user: dict = Depends(
     update["uf"] = (update.get("uf") or "").upper()
     update["main_photo"] = (update.get("photos") or [None])[0]
     update["updated_at"] = now_iso()
-    update["status"] = "pending"  # re-approval after edit
+    update["status"] = "pending"  # re-approval after edit (both public and repasse)
     update["slug"] = await unique_slug(db.vehicles, vehicle_slug_base(update), current_id=vid)
     await db.vehicles.update_one({"id": vid}, {"$set": update})
+    # Notification + push only for public ads. Repasse re-moderation is silent to keep
+    # the current catalog behavior unchanged.
+    if body.ad_type != "repasse":
+        notif_id = str(uuid.uuid4())
+        await db.notifications.insert_one({
+            "id": notif_id,
+            "type": "ad_edited",
+            "title": f"Anúncio editado: {update['brand']} {update['model']} {update['year_model']}",
+            "body": f"Voltou para moderação — {user.get('store_name')}",
+            "vehicle_id": vid,
+            "user_id": user["id"],
+            "read": False,
+            "created_at": now_iso(),
+        })
+        try:
+            await push_for_notification(
+                db, notif_id, "ad_edited",
+                "Nova pendência no StockAuto",
+                "Há um anúncio aguardando moderação",
+                url="/admin", extra={"tab": "vehicles"},
+            )
+        except Exception as e:
+            logger.warning(f"push notify (ad_edited) failed: {type(e).__name__}")
     return await db.vehicles.find_one({"id": vid}, {"_id": 0})
 
 
@@ -1217,6 +1274,60 @@ async def admin_notifications(user: dict = Depends(get_admin_user)):
 async def admin_mark_notification(nid: str, user: dict = Depends(get_admin_user)):
     await db.notifications.update_one({"id": nid}, {"$set": {"read": True}})
     return {"ok": True}
+
+
+# ============================================================================
+# Web Push (VAPID) — admin device subscriptions
+# Endpoints protected by get_admin_user. Falls back gracefully when the
+# VAPID environment variables are not configured.
+# ============================================================================
+class PushSubscribeIn(BaseModel):
+    endpoint: str
+    keys: dict  # {"p256dh": "...", "auth": "..."}
+
+
+class PushUnsubscribeIn(BaseModel):
+    endpoint: str
+
+
+@api.get("/admin/push/status")
+async def admin_push_status(user: dict = Depends(get_admin_user)):
+    configured = push_is_configured()
+    return {
+        "configured": configured,
+        "public_key": get_public_key() if configured else None,
+        "subscriptions": await count_subscriptions(db, user["id"]),
+    }
+
+
+@api.post("/admin/push/subscribe")
+async def admin_push_subscribe(body: PushSubscribeIn, user: dict = Depends(get_admin_user)):
+    if not push_is_configured():
+        raise HTTPException(status_code=503, detail="Notificações push ainda não configuradas.")
+    if not body.endpoint or not body.keys.get("p256dh") or not body.keys.get("auth"):
+        raise HTTPException(status_code=400, detail="Assinatura de push incompleta.")
+    result = await upsert_subscription(db, user["id"], body.endpoint, body.keys)
+    return {"ok": True, "created": result["created"]}
+
+
+@api.post("/admin/push/unsubscribe")
+async def admin_push_unsubscribe(body: PushUnsubscribeIn, user: dict = Depends(get_admin_user)):
+    removed = await remove_subscription(db, user["id"], body.endpoint)
+    return {"ok": True, "removed": removed}
+
+
+@api.post("/admin/push/test")
+async def admin_push_test(user: dict = Depends(get_admin_user)):
+    if not push_is_configured():
+        raise HTTPException(status_code=503, detail="Notificações push ainda não configuradas.")
+    payload = {
+        "type": "test",
+        "notification_id": f"test-{uuid.uuid4()}",
+        "title": "Teste do StockAuto",
+        "body": "Notificações estão funcionando neste dispositivo.",
+        "url": "/admin",
+    }
+    return await send_push_to_admins(db, payload)
 
 
 @api.get("/admin/settings")
@@ -1868,6 +1979,9 @@ async def on_startup():
     await db.vehicles.create_index([("category", 1), ("uf", 1)])
     await db.services.create_index("slug")
     await db.services.create_index([("category", 1), ("active", 1)])
+    # Push subscriptions — endpoint must be unique to keep register idempotent.
+    await db.push_subscriptions.create_index("endpoint", unique=True)
+    await db.push_subscriptions.create_index("admin_id")
     init_storage()
     await seed_admin()  # Admin é necessário para login, sempre executado
     # Migration: sincroniza plan_ad_limit + plan_offer_limit dos dealers com a config atual dos planos.
