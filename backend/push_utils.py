@@ -155,9 +155,22 @@ def _send_one_sync(subscription_info: dict, payload: dict, vapid_private_pem: st
         )
         return getattr(response, "status_code", 201)
     except WebPushException as e:
-        status = getattr(getattr(e, "response", None), "status_code", 0)
-        # Bubble the code up so caller can decide.
-        return status or -1
+        resp = getattr(e, "response", None)
+        status = getattr(resp, "status_code", 0) or -1
+        # Log the provider response for diagnostics (never logs the private key
+        # or subscription secrets — only status and short body prefix).
+        body_snippet = ""
+        try:
+            body_snippet = (resp.text or "")[:200] if resp is not None else ""
+        except Exception:
+            body_snippet = ""
+        logger.warning(
+            "push send failed status=%s endpoint_prefix=%s body=%r",
+            status,
+            (subscription_info.get("endpoint") or "")[:40],
+            body_snippet,
+        )
+        return status
 
 
 async def send_push_to_admin(db, admin_id: str, payload: dict) -> dict:
