@@ -24,7 +24,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import PlainTextResponse, Response as FastAPIResponse, JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from PIL import Image
 
 # ============================================================================
@@ -74,10 +74,19 @@ _PT_VALIDATION = [
 
 
 def _translate_validation_msg(msg: str) -> str:
+    if not msg:
+        return "Erro de validação."
+    # Pydantic v2 prepends "Value error, " for ValueError raised inside validators.
+    # Our validators already emit PT-BR text, so strip the English prefix.
+    cleaned = msg
+    for prefix in ("Value error, ", "Value error,"):
+        if cleaned.lower().startswith(prefix.lower()):
+            cleaned = cleaned[len(prefix):].lstrip()
+            break
     for en, pt in _PT_VALIDATION:
-        if en.lower() in (msg or "").lower():
+        if en.lower() in cleaned.lower():
             return pt
-    return msg or "Erro de validação."
+    return cleaned
 
 
 _FIELD_LABELS = {
@@ -474,6 +483,72 @@ class VehicleIn(BaseModel):
     fipe_price: Optional[float] = None  # FIPE reference value, only used when ad_type == "repasse"
     # Offer/promotion field (public ads only) ---------------------------------
     offer_price: Optional[float] = None  # When set & < price, the card shows "OFERTA" with original riscado
+
+    # ---- Plausibility / integrity validators (raised as HTTP 422 in PT-BR) ----
+    @field_validator("year_made")
+    @classmethod
+    def _v_year_made(cls, v):
+        if v is None:
+            return v
+        current = datetime.now(timezone.utc).year
+        if v < 1900 or v > current + 1:
+            raise ValueError(f"deve estar entre 1900 e {current + 1}.")
+        return v
+
+    @field_validator("year_model")
+    @classmethod
+    def _v_year_model(cls, v):
+        if v is None:
+            return v
+        current = datetime.now(timezone.utc).year
+        if v < 1900 or v > current + 2:
+            raise ValueError(f"deve estar entre 1900 e {current + 2}.")
+        return v
+
+    @field_validator("km")
+    @classmethod
+    def _v_km(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("não pode ser negativa.")
+        return v
+
+    @field_validator("price")
+    @classmethod
+    def _v_price(cls, v):
+        # None => "Consultar Valor" (comportamento preservado).
+        # Zero é aceito no schema (público sem valor) mas o frontend deve tratar
+        # como "Consultar Valor". Rejeitamos apenas valores negativos.
+        if v is not None and v < 0:
+            raise ValueError("não pode ser negativo.")
+        return v
+
+    @field_validator("fipe_price")
+    @classmethod
+    def _v_fipe(cls, v):
+        # A obrigatoriedade em repasse (>0) é enforçada na rota; aqui só rejeitamos valores negativos.
+        if v is not None and v < 0:
+            raise ValueError("não pode ser negativo.")
+        return v
+
+    @field_validator("offer_price")
+    @classmethod
+    def _v_offer(cls, v):
+        # Quando informado, precisa ser > 0. Zero significa "sem oferta" e é tratado como ausente no schema.
+        if v is not None and v != 0 and v <= 0:
+            raise ValueError("deve ser maior que zero.")
+        return v
+
+    @model_validator(mode="after")
+    def _cross_field(self):
+        if self.year_made and self.year_model and self.year_model < self.year_made:
+            raise ValueError("Ano modelo não pode ser anterior ao ano de fabricação.")
+        if (
+            self.offer_price is not None and self.offer_price > 0
+            and self.price is not None and self.price > 0
+            and self.offer_price >= self.price
+        ):
+            raise ValueError("Valor da oferta deve ser menor que o preço original.")
+        return self
 
 
 class AdminUserUpdateIn(BaseModel):
