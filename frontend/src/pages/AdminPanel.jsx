@@ -695,15 +695,25 @@ function PushSettings() {
   const test = async () => {
     setBusy(true); setMsg(null);
     const r = await pushLib.sendTest();
-    if (r.ok) {
-      setMsg({
-        kind: r.sent > 0 ? "ok" : "err",
-        text: r.sent > 0
-          ? `Teste enviado para ${r.sent} dispositivo(s).`
-          : "Nenhum dispositivo ativo. Ative primeiro no botão acima.",
-      });
+    if (!r.ok) {
+      // Network / server-side failure to reach the endpoint at all.
+      setMsg({ kind: "err", text: r.message || "Não foi possível contactar o servidor. Tente novamente." });
+      setBusy(false);
+      return;
+    }
+    // Server responded with the structured payload; differentiate by reason.
+    if (r.configured === false || r.reason === "not_configured") {
+      setMsg({ kind: "err", text: "Notificações push ainda não configuradas no servidor." });
+    } else if (r.reason === "no_subscription" || r.registered === 0) {
+      setMsg({ kind: "err", text: "Nenhum dispositivo registrado. Ative primeiro neste celular." });
+    } else if (r.sent > 0) {
+      setMsg({ kind: "ok", text: `Teste enviado para ${r.sent} dispositivo(s).` });
     } else {
-      setMsg({ kind: "err", text: r.message });
+      // registered > 0 && sent === 0 → provider rejected the payload
+      setMsg({
+        kind: "err",
+        text: "O dispositivo está registrado, mas o envio não foi aceito. Tente ativar novamente ou verifique a configuração do servidor.",
+      });
     }
     setBusy(false);
   };

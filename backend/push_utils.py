@@ -160,6 +160,67 @@ def _send_one_sync(subscription_info: dict, payload: dict, vapid_private_pem: st
         return status or -1
 
 
+async def send_push_to_admin(db, admin_id: str, payload: dict) -> dict:
+    """
+    Best-effort push targeting ONLY the subscriptions owned by a specific admin.
+
+    Distinguishes:
+      - `configured`: whether VAPID env is present at all
+      - `registered`: number of enabled subs owned by this admin BEFORE send
+      - `sent`: number of subs that accepted the push (2xx)
+      - `removed`: number of dead subs (404/410) removed during this send
+      - `reason`: short machine-friendly key ("ok", "no_subscription",
+                  "not_configured", "provider_rejected"). Never carries secrets.
+    """
+    if not is_configured():
+        return {"configured": False, "registered": 0, "sent": 0, "removed": 0,
+                "reason": "not_configured"}
+
+    pem = _load_private_pem()
+    subject = get_subject()
+    if not pem:
+        return {"configured": False, "registered": 0, "sent": 0, "removed": 0,
+                "reason": "not_configured"}
+
+    subs = [s async for s in db.push_subscriptions.find({
+        "admin_id": admin_id,
+        "enabled": True,
+    })]
+    registered = len(subs)
+    if registered == 0:
+        return {"configured": True, "registered": 0, "sent": 0, "removed": 0,
+                "reason": "no_subscription"}
+
+    sent = 0
+    removed = 0
+
+    for sub in subs:
+        info = {"endpoint": sub["endpoint"], "keys": sub.get("keys", {})}
+        try:
+            code = await asyncio.to_thread(_send_one_sync, info, payload, pem, subject)
+        except Exception as e:
+            logger.warning(
+                "push send exception admin=%s err=%s",
+                admin_id,
+                type(e).__name__,
+            )
+            continue
+        if code in (200, 201, 202, 204):
+            sent += 1
+        elif code in (404, 410):
+            await db.push_subscriptions.delete_one({"endpoint": sub["endpoint"]})
+            removed += 1
+        else:
+            logger.info(
+                "push non-fatal status=%s admin=%s endpoint_prefix=%s",
+                code, admin_id, sub["endpoint"][:40],
+            )
+
+    reason = "ok" if sent > 0 else "provider_rejected"
+    return {"configured": True, "registered": registered, "sent": sent,
+            "removed": removed, "reason": reason}
+
+
 async def send_push_to_admins(db, payload: dict) -> dict:
     """
     Best-effort broadcast to all enabled admin subscriptions.

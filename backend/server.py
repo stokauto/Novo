@@ -32,6 +32,7 @@ from push_utils import (
     is_configured as push_is_configured,
     push_for_notification,
     remove_subscription,
+    send_push_to_admin,
     send_push_to_admins,
     upsert_subscription,
 )
@@ -1319,7 +1320,9 @@ async def admin_push_unsubscribe(body: PushUnsubscribeIn, user: dict = Depends(g
 @api.post("/admin/push/test")
 async def admin_push_test(user: dict = Depends(get_admin_user)):
     if not push_is_configured():
-        raise HTTPException(status_code=503, detail="Notificações push ainda não configuradas.")
+        # Keep the shape stable so the frontend can rely on the same keys.
+        return {"configured": False, "registered": 0, "sent": 0, "removed": 0,
+                "reason": "not_configured"}
     payload = {
         "type": "test",
         "notification_id": f"test-{uuid.uuid4()}",
@@ -1327,7 +1330,8 @@ async def admin_push_test(user: dict = Depends(get_admin_user)):
         "body": "Notificações estão funcionando neste dispositivo.",
         "url": "/admin",
     }
-    return await send_push_to_admins(db, payload)
+    # Scoped to the caller admin — matches the counter shown in /admin/push/status.
+    return await send_push_to_admin(db, user["id"], payload)
 
 
 @api.get("/admin/settings")
