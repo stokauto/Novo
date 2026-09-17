@@ -48,8 +48,13 @@ export async function getStatus() {
  * Prompts the browser for permission (only if not yet decided),
  * subscribes to the push service and registers the subscription
  * on the backend. Returns { ok: true, endpoint } on success.
+ *
+ * `forceFresh`: when true, drops any existing PushSubscription (both locally
+ * and on the server) before creating a new one. Use this when the server VAPID
+ * key rotated after the client already had a stale subscription — a fresh
+ * subscribe re-negotiates the applicationServerKey.
  */
-export async function enablePush() {
+export async function enablePush({ forceFresh = false } = {}) {
   if (!isPushSupported()) {
     return { ok: false, message: "Este navegador não suporta notificações push." };
   }
@@ -82,6 +87,16 @@ export async function enablePush() {
   }
 
   let subscription = await registration.pushManager.getSubscription();
+
+  // If asked to force a fresh subscription (e.g., after VAPID key rotation),
+  // clean up the old one BOTH on the server (so the counter drops) and
+  // locally so pushManager.subscribe() creates one bound to the current key.
+  if (forceFresh && subscription) {
+    try { await api.post("/admin/push/unsubscribe", { endpoint: subscription.endpoint }); } catch (_) { /* noop */ }
+    try { await subscription.unsubscribe(); } catch (_) { /* noop */ }
+    subscription = null;
+  }
+
   if (!subscription) {
     try {
       subscription = await registration.pushManager.subscribe({

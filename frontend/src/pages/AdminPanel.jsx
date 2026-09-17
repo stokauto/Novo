@@ -674,11 +674,19 @@ function PushSettings() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const enable = async () => {
+  const enable = async (forceFresh = false) => {
     setBusy(true); setMsg(null);
-    const r = await pushLib.enablePush();
-    if (r.ok) setMsg({ kind: "ok", text: "Notificações ativadas neste dispositivo." });
-    else setMsg({ kind: "err", text: r.message });
+    const r = await pushLib.enablePush({ forceFresh });
+    if (r.ok) {
+      setMsg({
+        kind: "ok",
+        text: forceFresh
+          ? "Assinatura recriada com a chave atual do servidor. Envie um teste."
+          : "Notificações ativadas neste dispositivo.",
+      });
+    } else {
+      setMsg({ kind: "err", text: r.message });
+    }
     await refresh();
     setBusy(false);
   };
@@ -709,10 +717,11 @@ function PushSettings() {
     } else if (r.sent > 0) {
       setMsg({ kind: "ok", text: `Teste enviado para ${r.sent} dispositivo(s).` });
     } else {
-      // registered > 0 && sent === 0 → provider rejected the payload
+      // registered > 0 && sent === 0 → provider rejected the payload,
+      // usually due to a stale VAPID key. Ask the user to click "Reativar".
       setMsg({
         kind: "err",
-        text: "O dispositivo está registrado, mas o envio não foi aceito. Tente ativar novamente ou verifique a configuração do servidor.",
+        text: "O dispositivo está registrado, mas o provedor não aceitou o envio. Clique em REATIVAR para recriar a assinatura com a chave atual do servidor.",
       });
     }
     setBusy(false);
@@ -770,7 +779,7 @@ function PushSettings() {
         {!enabled ? (
           <button
             data-testid="apanel-push-enable"
-            onClick={enable}
+            onClick={() => enable(false)}
             disabled={busy || !supported || !status.configured || permission === "denied"}
             className="inline-flex items-center gap-2 bg-black text-white px-5 h-11 font-bold uppercase tracking-tight text-xs hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -788,6 +797,15 @@ function PushSettings() {
               className="inline-flex items-center gap-2 border border-zinc-300 hover:border-black px-4 h-11 font-bold uppercase tracking-tight text-xs disabled:opacity-40"
             >
               Enviar teste
+            </button>
+            <button
+              data-testid="apanel-push-reactivate"
+              onClick={() => enable(true)}
+              disabled={busy}
+              className="inline-flex items-center gap-2 border border-zinc-300 hover:border-[#0E7C86] hover:text-[#0E7C86] px-4 h-11 font-bold uppercase tracking-tight text-xs disabled:opacity-40"
+              title="Recria a assinatura com a chave VAPID atual do servidor. Use se o teste falhar por rejeição do provedor."
+            >
+              Reativar
             </button>
             <button
               data-testid="apanel-push-disable"
