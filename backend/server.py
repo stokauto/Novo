@@ -36,6 +36,13 @@ from push_utils import (
     send_push_to_admins,
     upsert_subscription,
 )
+
+from store_sites import (
+    admin_site as ss_admin_view,
+    public_site as ss_public_view,
+    resolve_host as ss_resolve_host,
+    validate_subdomain as ss_validate_subdomain,
+)
 from PIL import Image
 
 # ============================================================================
@@ -1334,6 +1341,196 @@ async def admin_push_test(user: dict = Depends(get_admin_user)):
     return await send_push_to_admin(db, user["id"], payload)
 
 
+# ============================================================================
+# White-label store sites (multi-tenant scaffolding)
+# One site per dealer, addressable via `<subdomain>.stockauto.com.br`.
+# Admin CRUD + a single public read endpoint used by the tenant frontend.
+# ============================================================================
+class StoreSiteIn(BaseModel):
+    dealer_id: str
+    subdomain: str
+    site_active: bool = True
+    logo_path: Optional[str] = None
+    cover_path: Optional[str] = None
+    favicon_path: Optional[str] = None
+    primary_color: Optional[str] = "#111111"
+    secondary_color: Optional[str] = "#FF3B30"
+    button_color: Optional[str] = "#111111"
+    about_text: Optional[str] = ""
+    facebook_url: Optional[str] = ""
+    instagram_url: Optional[str] = ""
+
+
+class StoreSiteUpdateIn(BaseModel):
+    subdomain: Optional[str] = None
+    site_active: Optional[bool] = None
+    logo_path: Optional[str] = None
+    cover_path: Optional[str] = None
+    favicon_path: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    button_color: Optional[str] = None
+    about_text: Optional[str] = None
+    facebook_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+
+
+class StoreSiteStatusIn(BaseModel):
+    site_active: bool
+
+
+async def _ensure_dealer_exists(dealer_id: str) -> dict:
+    dealer = await db.users.find_one({"id": dealer_id, "role": "dealer"}, {"_id": 0, "password_hash": 0})
+    if not dealer:
+        raise HTTPException(status_code=404, detail="Revendedor não encontrado.")
+    return dealer
+
+
+@api.post("/admin/store-sites")
+async def admin_create_store_site(body: StoreSiteIn, user: dict = Depends(get_admin_user)):
+    try:
+        subdomain = ss_validate_subdomain(body.subdomain)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await _ensure_dealer_exists(body.dealer_id)
+
+    if await db.store_sites.find_one({"dealer_id": body.dealer_id}):
+        raise HTTPException(status_code=409, detail="Este revendedor já possui um site associado.")
+    if await db.store_sites.find_one({"subdomain": subdomain}):
+        raise HTTPException(status_code=409, detail="Este subdomínio já está em uso.")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "dealer_id": body.dealer_id,
+        "subdomain": subdomain,
+        "site_active": bool(body.site_active),
+        "logo_path": body.logo_path,
+        "cover_path": body.cover_path,
+        "favicon_path": body.favicon_path,
+        "primary_color": body.primary_color or "#111111",
+        "secondary_color": body.secondary_color or "#FF3B30",
+        "button_color": body.button_color or "#111111",
+        "about_text": body.about_text or "",
+        "facebook_url": body.facebook_url or "",
+        "instagram_url": body.instagram_url or "",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.store_sites.insert_one(doc)
+    return ss_admin_view(await db.store_sites.find_one({"id": doc["id"]}, {"_id": 0}))
+
+
+@api.get("/admin/store-sites")
+async def admin_list_store_sites(user: dict = Depends(get_admin_user)):
+    out = []
+    async for s in db.store_sites.find({}, {"_id": 0}).sort("created_at", -1):
+        # Enrich with a minimal dealer card so the admin list is useful on its own.
+        dealer = await db.users.find_one(
+            {"id": s.get("dealer_id")},
+            {"_id": 0, "id": 1, "store_name": 1, "city": 1, "uf": 1, "slug": 1},
+        )
+        row = ss_admin_view(s)
+        row["dealer"] = dealer or None
+        out.append(row)
+    return out
+
+
+@api.get("/admin/store-sites/{dealer_id}")
+async def admin_get_store_site(dealer_id: str, user: dict = Depends(get_admin_user)):
+    s = await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
+    return ss_admin_view(s)
+
+
+@api.put("/admin/store-sites/{dealer_id}")
+async def admin_update_store_site(dealer_id: str, body: StoreSiteUpdateIn,
+                                  user: dict = Depends(get_admin_user)):
+    current = await db.store_sites.find_one({"dealer_id": dealer_id})
+    if not current:
+        raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
+
+    updates: dict = {}
+    if body.subdomain is not None:
+        try:
+            new_sub = ss_validate_subdomain(body.subdomain)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if new_sub != current.get("subdomain"):
+            # Enforce uniqueness against a different site.
+            conflict = await db.store_sites.find_one({"subdomain": new_sub})
+            if conflict and conflict.get("dealer_id") != dealer_id:
+                raise HTTPException(status_code=409, detail="Este subdomínio já está em uso.")
+            updates["subdomain"] = new_sub
+
+    for k in ("site_active", "logo_path", "cover_path", "favicon_path",
+              "primary_color", "secondary_color", "button_color",
+              "about_text", "facebook_url", "instagram_url"):
+        v = getattr(body, k)
+        if v is not None:
+            updates[k] = v
+
+    if not updates:
+        return ss_admin_view(current)
+
+    updates["updated_at"] = now_iso()
+    await db.store_sites.update_one({"dealer_id": dealer_id}, {"$set": updates})
+    return ss_admin_view(await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0}))
+
+
+@api.patch("/admin/store-sites/{dealer_id}/status")
+async def admin_toggle_store_site(dealer_id: str, body: StoreSiteStatusIn,
+                                  user: dict = Depends(get_admin_user)):
+    res = await db.store_sites.update_one(
+        {"dealer_id": dealer_id},
+        {"$set": {"site_active": bool(body.site_active), "updated_at": now_iso()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
+    return ss_admin_view(await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0}))
+
+
+# --- Public tenant endpoint --------------------------------------------------
+async def _resolve_site_from_request(request: Request) -> Optional[dict]:
+    """Resolve the tenant site from Host or X-StockAuto-Subdomain header."""
+    host = request.headers.get("host")
+    override = request.headers.get("x-stockauto-subdomain")
+    resolution = ss_resolve_host(host, override)
+    if resolution["kind"] != "tenant":
+        return None
+    return await db.store_sites.find_one({"subdomain": resolution["subdomain"]}, {"_id": 0})
+
+
+@api.get("/public/store-site")
+async def public_store_site(request: Request):
+    site = await _resolve_site_from_request(request)
+    if not site or not site.get("site_active"):
+        raise HTTPException(status_code=404, detail="Site não encontrado ou inativo.")
+
+    dealer = await db.users.find_one(
+        {"id": site["dealer_id"]},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not dealer or dealer.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Loja indisponível no momento.")
+
+    # Filter vehicles ON THE BACKEND — never expose other dealers' stock.
+    vehicles = []
+    cur = db.vehicles.find(
+        {"dealer_id": site["dealer_id"], "status": "active", "ad_type": {"$ne": "repasse"}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(120)
+    async for v in cur:
+        vehicles.append(v)
+
+    return {
+        "site": ss_public_view(site),
+        "dealer": public_dealer_card(dealer),
+        "vehicles": vehicles,
+    }
+
+
 @api.get("/admin/settings")
 async def admin_get_settings(user: dict = Depends(get_admin_user)):
     return await get_settings()
@@ -1986,6 +2183,9 @@ async def on_startup():
     # Push subscriptions — endpoint must be unique to keep register idempotent.
     await db.push_subscriptions.create_index("endpoint", unique=True)
     await db.push_subscriptions.create_index("admin_id")
+    # White-label store sites: unique subdomain, one site per dealer.
+    await db.store_sites.create_index("subdomain", unique=True)
+    await db.store_sites.create_index("dealer_id", unique=True)
     init_storage()
     await seed_admin()  # Admin é necessário para login, sempre executado
     # Migration: sincroniza plan_ad_limit + plan_offer_limit dos dealers com a config atual dos planos.

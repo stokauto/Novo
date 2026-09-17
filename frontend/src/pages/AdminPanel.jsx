@@ -3,13 +3,14 @@ import { useSearchParams } from "react-router-dom";
 import api, { fileUrl } from "@/lib/api";
 import * as pushLib from "@/lib/push";
 import PanelLayout from "@/components/PanelLayout";
+import StoreSitesTab from "@/components/admin/StoreSitesTab";
 import { APANEL, APANEL_SVC } from "@/constants/testIds";
 import { brl, km, UF_STATES } from "@/lib/format";
 import {
   LayoutDashboard, Users, Car, Bell, Settings as SettingsIcon,
   Check, X, Trash2, Store, Clock, CheckCircle2, RefreshCw, ArrowRight, Image as ImageIcon,
   Pencil, Eye, EyeOff, GalleryHorizontal, ChevronUp, ChevronDown, ExternalLink, Plus,
-  Wrench,
+  Wrench, Globe,
 } from "lucide-react";
 
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
   { key: "dealers", label: "Revendedores", icon: Users, testId: APANEL.tabDealers },
   { key: "vehicles", label: "Moderação", icon: Car, testId: APANEL.tabVehicles },
   { key: "services", label: "Serviços", icon: Wrench, testId: APANEL.tabServices },
+  { key: "store-sites", label: "Sites das lojas", icon: Globe, testId: "apanel-tab-store-sites" },
   { key: "banners", label: "Banners", icon: GalleryHorizontal, testId: APANEL.tabBanners },
   { key: "notifications", label: "Notificações", icon: Bell, testId: APANEL.tabNotifications },
   { key: "settings", label: "Pagamento", icon: SettingsIcon, testId: APANEL.tabSettings },
@@ -68,6 +70,7 @@ export default function AdminPanel() {
       {tab === "dealers" && <DealersTab onChanged={loadStats} />}
       {tab === "vehicles" && <VehiclesTab onChanged={loadStats} />}
       {tab === "services" && <ServicesTab />}
+      {tab === "store-sites" && <StoreSitesTab />}
       {tab === "banners" && <BannersTab />}
       {tab === "notifications" && <NotificationsTab onChanged={loadStats} />}
       {tab === "settings" && <SettingsTab />}

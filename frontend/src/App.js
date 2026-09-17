@@ -18,6 +18,8 @@ import RepasseDetail from "@/pages/RepasseDetail";
 import Services from "@/pages/Services";
 import ServiceProfile from "@/pages/ServiceProfile";
 import LandingPlans from "@/pages/LandingPlans";
+import WhiteLabelSite from "@/pages/WhiteLabelSite";
+import { isWhiteLabelMode } from "@/lib/whiteLabel";
 import RegionalLanding from "@/pages/RegionalLanding";
 import ComingSoon from "@/pages/ComingSoon";
 
@@ -41,6 +43,25 @@ function ScrollToTop() {
 }
 
 function App() {
+  // White-label mode: when the app is being served from a tenant subdomain
+  // (or overridden via ?subdomain=/localStorage in dev), render the store site
+  // in complete isolation from the main portal — no shared header/footer/menu.
+  const whiteLabel = isWhiteLabelMode();
+  if (whiteLabel) {
+    return (
+      <div className="App">
+        <BrowserRouter>
+          <AuthProvider>
+            <ScrollToTop />
+            <Routes>
+              <Route path="*" element={<WhiteLabelSite />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </div>
+    );
+  }
+
   return (
     <div className="App">
       <BrowserRouter>
