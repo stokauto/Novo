@@ -400,3 +400,152 @@ class TestPublicVehicleEndpoint:
         assert body["id"] == v["id"]
         assert body["brand"] == "Chevrolet"
         assert body.get("dealer") is not None
+
+
+class TestBrandingUploads:
+    """
+    POST /admin/store-sites/{dealer_id}/{logo|cover|favicon}
+
+    Validates admin-only uploads for site identity assets and confirms the
+    resulting paths are surfaced by the public tenant endpoint.
+    """
+    def _create_site(self, admin_session, dealer_id, sub):
+        r = admin_session.post(f"{API}/admin/store-sites",
+                               json={"dealer_id": dealer_id, "subdomain": sub})
+        assert r.status_code == 200
+
+    def _png_bytes(self):
+        # Minimal 1x1 transparent PNG
+        return (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
+            b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9c"
+            b"c\xf8\x0f\x00\x00\x01\x01\x00\x01\x5c\xcd\xff\x69\x00\x00\x00"
+            b"\x00IEND\xaeB`\x82"
+        )
+
+    def _ico_bytes(self):
+        # Minimal valid ICO header + one 1x1 entry (fake content data — kept
+        # short; the server only checks extension, size and non-empty).
+        return b"\x00\x00\x01\x00\x01\x00\x01\x01\x00\x00\x01\x00\x18\x00\x1c\x00\x00\x00\x16\x00\x00\x00" + b"\x00" * 40
+
+    def test_upload_requires_admin(self, dealer):
+        r = dealer["session"].post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("l.png", self._png_bytes(), "image/png")},
+        )
+        assert r.status_code == 403
+
+    def test_upload_requires_auth(self, dealer):
+        r = requests.post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("l.png", self._png_bytes(), "image/png")},
+        )
+        assert r.status_code == 401
+
+    def test_upload_404_for_missing_dealer(self, admin_session):
+        r = admin_session.post(
+            f"{API}/admin/store-sites/does-not-exist/logo",
+            files={"file": ("l.png", self._png_bytes(), "image/png")},
+        )
+        assert r.status_code == 404
+
+    def test_upload_404_when_site_missing(self, admin_session, dealer):
+        # dealer exists but has no site yet
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("l.png", self._png_bytes(), "image/png")},
+        )
+        assert r.status_code == 404
+
+    def test_upload_rejects_invalid_extension(self, admin_session, dealer):
+        sub = f"br-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        for name, mime in (("evil.exe", "application/octet-stream"),
+                           ("hack.php", "application/x-httpd-php"),
+                           ("shell.sh", "application/x-sh")):
+            r = admin_session.post(
+                f"{API}/admin/store-sites/{dealer['id']}/logo",
+                files={"file": (name, b"malicious", mime)},
+            )
+            assert r.status_code == 400, f"Expected 400 for {name}"
+
+    def test_upload_rejects_empty_file(self, admin_session, dealer):
+        sub = f"empty-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("empty.png", b"", "image/png")},
+        )
+        assert r.status_code == 400
+
+    def test_favicon_accepts_ico_but_logo_rejects_it(self, admin_session, dealer):
+        sub = f"ico-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        ico = self._ico_bytes()
+        # Favicon endpoint accepts .ico
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/favicon",
+            files={"file": ("f.ico", ico, "image/x-icon")},
+        )
+        assert r.status_code == 200
+        # Logo endpoint rejects .ico (branding uses raster only)
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("l.ico", ico, "image/x-icon")},
+        )
+        assert r.status_code == 400
+
+    def test_upload_updates_all_three_fields(self, admin_session, dealer):
+        sub = f"all-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        png = self._png_bytes()
+
+        # Logo
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/logo",
+            files={"file": ("l.png", png, "image/png")},
+        )
+        assert r.status_code == 200
+        assert r.json()["path"].startswith("stockauto/uploads/")
+        assert "site-logo-" in r.json()["path"]
+        assert r.json()["site"]["logo_path"] == r.json()["path"]
+
+        # Cover
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/cover",
+            files={"file": ("c.png", png, "image/png")},
+        )
+        assert r.status_code == 200
+        assert "site-cover-" in r.json()["path"]
+        assert r.json()["site"]["cover_path"] == r.json()["path"]
+
+        # Favicon
+        r = admin_session.post(
+            f"{API}/admin/store-sites/{dealer['id']}/favicon",
+            files={"file": ("f.png", png, "image/png")},
+        )
+        assert r.status_code == 200
+        assert "site-favicon-" in r.json()["path"]
+        assert r.json()["site"]["favicon_path"] == r.json()["path"]
+
+        # Public tenant endpoint MUST surface the three paths.
+        r = requests.get(f"{API}/public/store-site",
+                         headers={"X-StockAuto-Subdomain": sub})
+        assert r.status_code == 200
+        site = r.json()["site"]
+        assert site["logo_path"] and "site-logo-" in site["logo_path"]
+        assert site["cover_path"] and "site-cover-" in site["cover_path"]
+        assert site["favicon_path"] and "site-favicon-" in site["favicon_path"]
+
+    def test_public_endpoint_works_without_uploaded_assets(self, admin_session, dealer):
+        """Sites without uploaded branding must keep working (fallback)."""
+        sub = f"noassets-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        r = requests.get(f"{API}/public/store-site",
+                         headers={"X-StockAuto-Subdomain": sub})
+        assert r.status_code == 200
+        site = r.json()["site"]
+        # None values are expected — the frontend renders the fallback UI.
+        assert site["logo_path"] is None
+        assert site["cover_path"] is None
+        assert site["favicon_path"] is None

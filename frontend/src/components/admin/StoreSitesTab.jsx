@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "@/lib/api";
-import { Plus, Pencil, ExternalLink, X, Check, Loader2, Store, Palette } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import api, { fileUrl } from "@/lib/api";
+import {
+  Plus, Pencil, ExternalLink, X, Check, Loader2, Store, Palette,
+  Image as ImageIcon, Upload,
+} from "lucide-react";
 
 /**
  * Admin panel section for managing white-label store sites.
@@ -209,6 +212,65 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
         <form onSubmit={submit} className="p-6 space-y-5">
           {error && <div className="border-l-4 border-[#FF3B30] bg-red-50 text-red-700 text-sm px-4 py-2">{error}</div>}
 
+          {isEdit && (
+            <div className="border border-zinc-200 bg-zinc-50 p-4 space-y-4">
+              <div className="text-[10px] uppercase tracking-[0.25em] font-black text-zinc-500">
+                Identidade visual
+              </div>
+              <div className="grid sm:grid-cols-3 gap-4">
+                <SiteAssetUploader
+                  label="Logo"
+                  hint="PNG, JPG ou WEBP · máx 3 MB"
+                  accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                  currentPath={site?.logo_path}
+                  aspectClass="aspect-square"
+                  testid="apanel-storesite-upload-logo"
+                  endpoint={`/admin/store-sites/${site?.dealer_id}/logo`}
+                  onUploaded={(newSite) => {
+                    // Update the local reference so previews refresh
+                    if (site && newSite) {
+                      site.logo_path = newSite.logo_path;
+                      site.cover_path = newSite.cover_path;
+                      site.favicon_path = newSite.favicon_path;
+                    }
+                  }}
+                />
+                <SiteAssetUploader
+                  label="Capa"
+                  hint="PNG, JPG ou WEBP · máx 5 MB · horizontal"
+                  accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                  currentPath={site?.cover_path}
+                  aspectClass="aspect-[16/9]"
+                  testid="apanel-storesite-upload-cover"
+                  endpoint={`/admin/store-sites/${site?.dealer_id}/cover`}
+                  onUploaded={(newSite) => {
+                    if (site && newSite) {
+                      site.logo_path = newSite.logo_path;
+                      site.cover_path = newSite.cover_path;
+                      site.favicon_path = newSite.favicon_path;
+                    }
+                  }}
+                />
+                <SiteAssetUploader
+                  label="Favicon"
+                  hint="ICO, PNG ou WEBP · máx 512 KB"
+                  accept="image/png,image/webp,image/x-icon,image/vnd.microsoft.icon,.ico,.png,.webp"
+                  currentPath={site?.favicon_path}
+                  aspectClass="aspect-square"
+                  testid="apanel-storesite-upload-favicon"
+                  endpoint={`/admin/store-sites/${site?.dealer_id}/favicon`}
+                  onUploaded={(newSite) => {
+                    if (site && newSite) {
+                      site.logo_path = newSite.logo_path;
+                      site.cover_path = newSite.cover_path;
+                      site.favicon_path = newSite.favicon_path;
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           <Field label="Revendedor">
             <select
               data-testid="apanel-storesite-form-dealer"
@@ -362,6 +424,95 @@ function ColorField({ label, value, onChange, testid }) {
           className="flex-1 h-12 px-3 border border-zinc-300 focus:border-black outline-none font-mono text-sm bg-white"
         />
       </div>
+    </div>
+  );
+}
+
+function SiteAssetUploader({ label, hint, accept, currentPath, aspectClass,
+                            testid, endpoint, onUploaded }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState(currentPath || null);
+  const [success, setSuccess] = useState(false);
+
+  const pick = () => inputRef.current?.click();
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setError("");
+    setSuccess(false);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post(endpoint, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (data?.path) {
+        setPreview(data.path);
+        setSuccess(true);
+        onUploaded?.(data.site);
+        // Auto-hide success indicator
+        setTimeout(() => setSuccess(false), 2200);
+      }
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Falha ao enviar arquivo.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div data-testid={testid}>
+      <div className="text-[10px] uppercase tracking-[0.25em] font-black text-zinc-500 mb-1.5 flex items-center gap-1">
+        <ImageIcon size={11} /> {label}
+      </div>
+      <div
+        className={`relative ${aspectClass} bg-white border-2 border-dashed border-zinc-300 hover:border-black transition-colors overflow-hidden group`}
+      >
+        {preview ? (
+          <img src={fileUrl(preview)} alt={label} className="w-full h-full object-contain bg-zinc-50" />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 text-xs">
+            <ImageIcon size={22} className="mb-1" />
+            Sem imagem
+          </div>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+            <Loader2 className="animate-spin" size={22} />
+          </div>
+        )}
+        {success && !uploading && (
+          <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest px-2 py-1 inline-flex items-center gap-1">
+            <Check size={11} /> Enviado
+          </div>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+        data-testid={`${testid}-input`}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={pick}
+          disabled={uploading}
+          data-testid={`${testid}-pick`}
+          className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-black px-3 h-8 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+        >
+          <Upload size={12} /> {preview ? "Trocar" : "Selecionar"}
+        </button>
+        <span className="text-[10px] text-zinc-500">{hint}</span>
+      </div>
+      {error && (
+        <p className="mt-2 text-[10px] text-[#FF3B30] font-bold">{error}</p>
+      )}
     </div>
   );
 }

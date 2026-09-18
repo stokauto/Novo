@@ -361,6 +361,39 @@ async def upload_image_to_storage(file: UploadFile, owner_id: str, watermark: bo
     return result["path"]
 
 
+# White-label site branding uploads (logo, cover, favicon).
+# Separate from upload_image_to_storage because:
+#  - favicons must accept .ico (a format the vehicle uploader rejects);
+#  - smaller size limit (branding assets should be lightweight);
+#  - no watermark is ever applied to branding assets.
+_SITE_ASSET_MIME = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "png": "image/png", "webp": "image/webp",
+    "ico": "image/x-icon",
+}
+
+
+async def upload_site_asset(file: UploadFile, owner_id: str, *,
+                            allowed_ext: set, max_bytes: int, subfolder: str) -> str:
+    filename = (file.filename or "asset").lower().strip()
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in allowed_ext:
+        allowed = ", ".join(sorted(allowed_ext)).upper()
+        raise HTTPException(status_code=400,
+                            detail=f"Formato de arquivo não suportado. Use {allowed}.")
+    data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+    if len(data) > max_bytes:
+        mb = max_bytes // (1024 * 1024)
+        raise HTTPException(status_code=413,
+                            detail=f"Arquivo muito grande (máximo {mb} MB).")
+    path = f"{APP_NAME}/uploads/{owner_id}/{subfolder}-{uuid.uuid4()}.{ext}"
+    content_type = file.content_type or _SITE_ASSET_MIME.get(ext, "application/octet-stream")
+    result = put_object(path, data, content_type)
+    return result["path"]
+
+
 # Vídeos aceitos no cadastro de anúncios (opcional, 1 por veículo).
 # Limite intencionalmente maior que fotos, mas sem processar/comprimir no backend.
 MAX_VIDEO_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -1489,6 +1522,70 @@ async def admin_toggle_store_site(dealer_id: str, body: StoreSiteStatusIn,
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
     return ss_admin_view(await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0}))
+
+
+# --- Site branding uploads (admin only) --------------------------------------
+# Each endpoint updates exactly ONE field of the store_sites document. The old
+# file is intentionally NOT deleted from storage in this iteration.
+async def _require_site_for_dealer(dealer_id: str) -> dict:
+    await _ensure_dealer_exists(dealer_id)
+    site = await db.store_sites.find_one({"dealer_id": dealer_id})
+    if not site:
+        raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
+    return site
+
+
+async def _update_site_field(dealer_id: str, field: str, path: str) -> dict:
+    await db.store_sites.update_one(
+        {"dealer_id": dealer_id},
+        {"$set": {field: path, "updated_at": now_iso()}},
+    )
+    return ss_admin_view(await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0}))
+
+
+@api.post("/admin/store-sites/{dealer_id}/logo")
+async def admin_store_site_upload_logo(dealer_id: str,
+                                       file: UploadFile = File(...),
+                                       user: dict = Depends(get_admin_user)):
+    await _require_site_for_dealer(dealer_id)
+    path = await upload_site_asset(
+        file, dealer_id,
+        allowed_ext={"jpg", "jpeg", "png", "webp"},
+        max_bytes=3 * 1024 * 1024,
+        subfolder="site-logo",
+    )
+    site = await _update_site_field(dealer_id, "logo_path", path)
+    return {"path": path, "site": site}
+
+
+@api.post("/admin/store-sites/{dealer_id}/cover")
+async def admin_store_site_upload_cover(dealer_id: str,
+                                        file: UploadFile = File(...),
+                                        user: dict = Depends(get_admin_user)):
+    await _require_site_for_dealer(dealer_id)
+    path = await upload_site_asset(
+        file, dealer_id,
+        allowed_ext={"jpg", "jpeg", "png", "webp"},
+        max_bytes=5 * 1024 * 1024,
+        subfolder="site-cover",
+    )
+    site = await _update_site_field(dealer_id, "cover_path", path)
+    return {"path": path, "site": site}
+
+
+@api.post("/admin/store-sites/{dealer_id}/favicon")
+async def admin_store_site_upload_favicon(dealer_id: str,
+                                          file: UploadFile = File(...),
+                                          user: dict = Depends(get_admin_user)):
+    await _require_site_for_dealer(dealer_id)
+    path = await upload_site_asset(
+        file, dealer_id,
+        allowed_ext={"png", "ico", "webp"},
+        max_bytes=512 * 1024,
+        subfolder="site-favicon",
+    )
+    site = await _update_site_field(dealer_id, "favicon_path", path)
+    return {"path": path, "site": site}
 
 
 # --- Public tenant endpoint --------------------------------------------------
