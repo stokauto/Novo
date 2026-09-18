@@ -19,6 +19,7 @@ import Services from "@/pages/Services";
 import ServiceProfile from "@/pages/ServiceProfile";
 import LandingPlans from "@/pages/LandingPlans";
 import WhiteLabelSite from "@/pages/WhiteLabelSite";
+import WhiteLabelVehicleDetail from "@/pages/WhiteLabelVehicleDetail";
 import { isWhiteLabelMode } from "@/lib/whiteLabel";
 import RegionalLanding from "@/pages/RegionalLanding";
 import ComingSoon from "@/pages/ComingSoon";
@@ -54,6 +55,10 @@ function App() {
           <AuthProvider>
             <ScrollToTop />
             <Routes>
+              {/* Tenant-scoped vehicle detail — mirrors the portal's /veiculo/:slug
+                  route so existing links keep working, but renders WITHOUT the
+                  main StockAuto chrome. */}
+              <Route path="/veiculo/:slug" element={<WhiteLabelVehicleDetail />} />
               <Route path="*" element={<WhiteLabelSite />} />
             </Routes>
           </AuthProvider>

@@ -269,3 +269,134 @@ class TestResolver:
     def test_reserved_subdomain_in_host_returns_unknown(self):
         from store_sites import resolve_host
         assert resolve_host("admin.stockauto.com.br")["kind"] == "unknown"
+
+
+class TestPublicVehicleEndpoint:
+    """
+    GET /public/store-site/vehicle/{slug}
+
+    Ensures the tenant-scoped vehicle endpoint:
+      - returns the vehicle when it belongs to the tenant's dealer;
+      - returns 404 when the vehicle belongs to a different dealer;
+      - returns 404 for inactive vehicles;
+      - returns 404 for non-existent slugs;
+      - never modifies data.
+    Also verifies that the main portal endpoint (/vehicles/{slug}) keeps
+    working exactly as before.
+    """
+
+    def _publish(self, admin_session, dealer, brand="Fiat", model="Uno"):
+        r = dealer["session"].post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": brand, "model": model,
+            "year_made": 2021, "year_model": 2022, "km": 30000, "price": 55000,
+            "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        assert r.status_code == 200
+        payload = r.json()
+        vid = payload["id"]
+        # Approve so it becomes active + reachable publicly
+        admin_session.put(f"{API}/admin/vehicles/{vid}/status", json={"status": "active"})
+        # Re-read to get slug + latest status
+        v = requests.get(f"{API}/vehicles/{vid}").json()
+        return v
+
+    def _create_site(self, admin_session, dealer_id, sub):
+        r = admin_session.post(f"{API}/admin/store-sites", json={
+            "dealer_id": dealer_id, "subdomain": sub
+        })
+        assert r.status_code == 200, r.text
+
+    def test_returns_vehicle_when_owned_by_site_dealer(self, admin_session, dealer):
+        sub = f"vsite-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        v = self._publish(admin_session, dealer, brand="Honda", model="Civic")
+
+        r = requests.get(
+            f"{API}/public/store-site/vehicle/{v['slug']}",
+            headers={"X-StockAuto-Subdomain": sub},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["site"]["subdomain"] == sub
+        assert body["dealer"]["id"] == dealer["id"]
+        assert body["vehicle"]["id"] == v["id"]
+        assert body["vehicle"]["brand"] == "Honda"
+        # Public shape — never leaks admin-only fields.
+        assert "password_hash" not in str(body)
+
+    def test_returns_404_when_vehicle_belongs_to_another_store(self, admin_session, dealer):
+        """Vehicle from dealer A must NOT be reachable through dealer B's site."""
+        # Site for dealer A
+        subA = f"a-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], subA)
+        vA = self._publish(admin_session, dealer, brand="Ford", model="Ka")
+
+        # Different dealer B with its own site
+        emailB = f"other-{uuid.uuid4().hex[:8]}@test.com"
+        rB = requests.post(f"{API}/auth/register", json={
+            "email": emailB, "password": "Test@1234",
+            "store_name": "B Store", "phone": "(67) 3000-0000",
+            "whatsapp": "(67) 99000-0000", "city": "Campo Grande", "uf": "MS",
+            "plan_code": "loja",
+        })
+        idB = rB.json()["id"]
+        admin_session.put(f"{API}/admin/users/{idB}", json={"status": "active"})
+        subB = f"b-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, idB, subB)
+
+        try:
+            # Requesting via B's subdomain must NOT return A's vehicle.
+            r = requests.get(
+                f"{API}/public/store-site/vehicle/{vA['slug']}",
+                headers={"X-StockAuto-Subdomain": subB},
+            )
+            assert r.status_code == 404
+        finally:
+            admin_session.delete(f"{API}/admin/users/{idB}")
+
+    def test_returns_404_for_inactive_vehicle(self, admin_session, dealer):
+        sub = f"inactive-v-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        v = self._publish(admin_session, dealer, brand="Toyota", model="Etios")
+
+        # Flip status back to pending
+        admin_session.put(f"{API}/admin/vehicles/{v['id']}/status", json={"status": "pending"})
+
+        r = requests.get(
+            f"{API}/public/store-site/vehicle/{v['slug']}",
+            headers={"X-StockAuto-Subdomain": sub},
+        )
+        assert r.status_code == 404
+
+    def test_returns_404_for_missing_slug(self, admin_session, dealer):
+        sub = f"missing-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        r = requests.get(
+            f"{API}/public/store-site/vehicle/nao-existe-slug",
+            headers={"X-StockAuto-Subdomain": sub},
+        )
+        assert r.status_code == 404
+
+    def test_returns_404_when_site_inactive(self, admin_session, dealer):
+        sub = f"si-{uuid.uuid4().hex[:6]}"
+        self._create_site(admin_session, dealer["id"], sub)
+        v = self._publish(admin_session, dealer, brand="VW", model="Gol")
+
+        admin_session.patch(f"{API}/admin/store-sites/{dealer['id']}/status",
+                            json={"site_active": False})
+
+        r = requests.get(
+            f"{API}/public/store-site/vehicle/{v['slug']}",
+            headers={"X-StockAuto-Subdomain": sub},
+        )
+        assert r.status_code == 404
+
+    def test_main_portal_endpoint_still_works(self, admin_session, dealer):
+        """Regression guard: the existing public endpoint must NOT change."""
+        v = self._publish(admin_session, dealer, brand="Chevrolet", model="Onix")
+        r = requests.get(f"{API}/vehicles/{v['slug']}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == v["id"]
+        assert body["brand"] == "Chevrolet"
+        assert body.get("dealer") is not None

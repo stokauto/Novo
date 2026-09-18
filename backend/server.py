@@ -1531,6 +1531,49 @@ async def public_store_site(request: Request):
     }
 
 
+@api.get("/public/store-site/vehicle/{slug}")
+async def public_store_site_vehicle(slug: str, request: Request):
+    """
+    Public vehicle detail scoped to the tenant white-label site.
+
+    Behavior:
+      - Resolves the tenant site the same way `GET /public/store-site` does
+        (Host header or X-StockAuto-Subdomain override).
+      - Returns 404 if the site is missing/inactive OR the dealer is not active.
+      - Returns 404 when the vehicle does NOT belong to this dealer, is
+        inactive, or is a repasse (B2B) ad — never leaking other stores' stock.
+      - Never modifies any record.
+    """
+    site = await _resolve_site_from_request(request)
+    if not site or not site.get("site_active"):
+        raise HTTPException(status_code=404, detail="Site não encontrado ou inativo.")
+
+    dealer = await db.users.find_one(
+        {"id": site["dealer_id"]},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not dealer or dealer.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Loja indisponível no momento.")
+
+    v = await db.vehicles.find_one(
+        {
+            "$or": [{"slug": slug}, {"id": slug}],
+            "dealer_id": site["dealer_id"],
+            "status": "active",
+            "ad_type": {"$ne": "repasse"},
+        },
+        {"_id": 0},
+    )
+    if not v:
+        raise HTTPException(status_code=404, detail="Veículo não encontrado nesta loja.")
+
+    return {
+        "site": ss_public_view(site),
+        "dealer": public_dealer_card(dealer),
+        "vehicle": await vehicle_with_dealer(v),
+    }
+
+
 @api.get("/admin/settings")
 async def admin_get_settings(user: dict = Depends(get_admin_user)):
     return await get_settings()
