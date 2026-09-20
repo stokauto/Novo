@@ -13,7 +13,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Upload, X, Star, GripVertical, Loader2 } from "lucide-react";
+import { Upload, X, Star, GripVertical, Loader2, Image as ImageIcon, Info } from "lucide-react";
 import api from "@/lib/api";
 import { fileUrl } from "@/lib/api";
 
@@ -165,6 +165,47 @@ export default function PhotoUploader({ value = [], onChange, testid = "photo-up
         <div className="mt-1 text-xs text-zinc-400">
           {value.length}/{max}
         </div>
+      </div>
+
+      {/* Photo guidance — informational only, does NOT block uploads */}
+      <div
+        data-testid={`${testid}-helper`}
+        className="border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-[11px] leading-relaxed text-zinc-700 space-y-1.5"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ImageIcon size={12} className="text-zinc-500" />
+          <span className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500">
+            Recomendação para fotos do veículo
+          </span>
+          <span className="ml-1 flex flex-wrap gap-1">
+            {["JPG", "WEBP"].map((f) => (
+              <span
+                key={f}
+                className="inline-block bg-white border border-zinc-300 px-1.5 py-0.5 text-[10px] font-bold tracking-tight"
+              >
+                {f}
+              </span>
+            ))}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <span><strong className="text-zinc-900">Proporção:</strong> 4:3 ou 16:9 (horizontal)</span>
+          <span><strong className="text-zinc-900">Resolução mínima:</strong> 1280 px no lado maior</span>
+          <span><strong className="text-zinc-900">Limite:</strong> máx 8 MB por foto</span>
+        </div>
+        <ul className="pt-0.5 space-y-0.5">
+          {[
+            "Fotos horizontais são preferidas — verticais aparecem menores nas listagens.",
+            "Primeira foto = capa. Escolha uma frontal 3/4 bem iluminada para melhor conversão.",
+            "Aceito também PNG e GIF, mas JPG/WEBP geram carregamento mais rápido.",
+          ].map((t, i) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <li key={i} className="flex items-start gap-1.5 text-zinc-600">
+              <Info size={10} className="mt-1 flex-shrink-0 text-zinc-400" />
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {error && (

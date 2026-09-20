@@ -4,6 +4,7 @@ import {
   Plus, Pencil, ExternalLink, X, Check, Loader2, Store, Palette,
   Image as ImageIcon, Upload,
 } from "lucide-react";
+import ImageHelperText from "./ImageHelperText";
 
 /**
  * Admin panel section for managing white-label store sites.
@@ -226,6 +227,16 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
                   aspectClass="aspect-square"
                   testid="apanel-storesite-upload-logo"
                   endpoint={`/admin/store-sites/${site?.dealer_id}/logo`}
+                  helper={{
+                    formats: ["PNG", "WEBP", "JPG"],
+                    dimensions: "800 × 800 px (quadrado) ou 1200 × 400 px (horizontal curto)",
+                    aspectHint: "quadrada ou horizontal curta",
+                    sizeLimit: "máx 3 MB",
+                    tips: [
+                      "PNG/WEBP com fundo transparente é o ideal — evita bordas brancas sobre o cabeçalho colorido.",
+                      "Envie na maior resolução possível dentro do limite; será redimensionado no cliente.",
+                    ],
+                  }}
                   onUploaded={(newSite) => {
                     // Update the local reference so previews refresh
                     if (site && newSite) {
@@ -243,6 +254,16 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
                   aspectClass="aspect-[16/9]"
                   testid="apanel-storesite-upload-cover"
                   endpoint={`/admin/store-sites/${site?.dealer_id}/cover`}
+                  helper={{
+                    formats: ["JPG", "WEBP"],
+                    dimensions: "1920 × 600 px (desktop)",
+                    aspectHint: "horizontal 16:9 — o mesmo arquivo é usado no celular e será recortado no centro",
+                    sizeLimit: "máx 5 MB",
+                    tips: [
+                      "Como o mesmo arquivo é reaproveitado no mobile, mantenha logotipos e textos importantes no centro da imagem (safe area).",
+                      "Se puder, exporte também uma versão 1080 × 1350 px e envie o retrato via edição de textos/composição externa antes do upload.",
+                    ],
+                  }}
                   onUploaded={(newSite) => {
                     if (site && newSite) {
                       site.logo_path = newSite.logo_path;
@@ -259,6 +280,15 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
                   aspectClass="aspect-square"
                   testid="apanel-storesite-upload-favicon"
                   endpoint={`/admin/store-sites/${site?.dealer_id}/favicon`}
+                  helper={{
+                    formats: ["PNG", "WEBP", "ICO"],
+                    dimensions: "512 × 512 px",
+                    aspectHint: "quadrada",
+                    sizeLimit: "máx 512 KB",
+                    tips: [
+                      "É o ícone que aparece na aba do navegador. Prefira uma marca simplificada, sem texto.",
+                    ],
+                  }}
                   onUploaded={(newSite) => {
                     if (site && newSite) {
                       site.logo_path = newSite.logo_path;
@@ -429,7 +459,7 @@ function ColorField({ label, value, onChange, testid }) {
 }
 
 function SiteAssetUploader({ label, hint, accept, currentPath, aspectClass,
-                            testid, endpoint, onUploaded }) {
+                            testid, endpoint, onUploaded, helper }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -512,6 +542,12 @@ function SiteAssetUploader({ label, hint, accept, currentPath, aspectClass,
       </div>
       {error && (
         <p className="mt-2 text-[10px] text-[#FF3B30] font-bold">{error}</p>
+      )}
+      {helper && (
+        <ImageHelperText
+          {...helper}
+          testid={`${testid}-helper`}
+        />
       )}
     </div>
   );

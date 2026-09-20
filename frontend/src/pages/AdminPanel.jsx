@@ -4,6 +4,7 @@ import api, { fileUrl } from "@/lib/api";
 import * as pushLib from "@/lib/push";
 import PanelLayout from "@/components/PanelLayout";
 import StoreSitesTab from "@/components/admin/StoreSitesTab";
+import ImageHelperText from "@/components/admin/ImageHelperText";
 import { APANEL, APANEL_SVC } from "@/constants/testIds";
 import { brl, km, UF_STATES } from "@/lib/format";
 import {
@@ -582,6 +583,17 @@ function BannerFormModal({ banner, onClose, onSaved }) {
                 <img src={fileUrl(banner.image_desktop_path)} alt="" className="w-full h-full object-cover" />
               </div>
             )}
+            <ImageHelperText
+              testid="apanel-banner-helper-desktop"
+              formats={["JPG", "WEBP"]}
+              dimensions="1920 × 500 px"
+              aspectHint="horizontal panorâmica"
+              sizeLimit="máx 8 MB"
+              tips={[
+                "Imagem principal da home. Deixe respiro nas laterais para conteúdos que aparecem por cima do banner.",
+                "Se não enviar uma versão mobile, esta imagem também será exibida no celular.",
+              ]}
+            />
           </Field>
 
           <Field label={`Imagem Mobile (opcional) — 1080×1080 px`}>
@@ -600,6 +612,16 @@ function BannerFormModal({ banner, onClose, onSaved }) {
                 <img src={fileUrl(banner.image_mobile_path)} alt="" className="w-full h-full object-cover" />
               </div>
             )}
+            <ImageHelperText
+              testid="apanel-banner-helper-mobile"
+              formats={["JPG", "WEBP"]}
+              dimensions="1080 × 1080 px (quadrado) ou 1080 × 1350 px (retrato)"
+              aspectHint="quadrada ou vertical — recorta melhor no celular"
+              sizeLimit="máx 8 MB"
+              tips={[
+                "Mantenha textos e logotipos no centro (safe area) — extremos podem ser cortados em telas pequenas.",
+              ]}
+            />
           </Field>
 
           <Field label="Link de destino (URL externa)">
@@ -1278,6 +1300,16 @@ function ServiceFormModal({ service, categories, onClose, onSaved }) {
                   <img src={fileUrl(service.logo_path)} alt="" className="w-full h-full object-cover" />
                 </div>
               )}
+              <ImageHelperText
+                testid="apanel-service-helper-logo"
+                formats={["PNG", "WEBP", "JPG"]}
+                dimensions="400 × 400 px"
+                aspectHint="quadrada"
+                sizeLimit="máx 8 MB"
+                tips={[
+                  "PNG/WEBP com fundo transparente evita moldura branca na listagem de serviços.",
+                ]}
+              />
             </Field>
             <Field label={`Foto de capa ${isEdit ? "(deixe vazio p/ manter)" : "(horizontal, ideal 1600×600)"}`}>
               <input
@@ -1291,6 +1323,16 @@ function ServiceFormModal({ service, categories, onClose, onSaved }) {
                   <img src={fileUrl(service.cover_path)} alt="" className="w-full h-full object-cover" />
                 </div>
               )}
+              <ImageHelperText
+                testid="apanel-service-helper-cover"
+                formats={["JPG", "WEBP"]}
+                dimensions="1600 × 600 px"
+                aspectHint="horizontal panorâmica"
+                sizeLimit="máx 8 MB"
+                tips={[
+                  "Aparece no topo do perfil da empresa em /servicos/:slug. Elementos importantes no centro.",
+                ]}
+              />
             </Field>
           </div>
 

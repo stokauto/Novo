@@ -16,6 +16,17 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
+### 20/Fev/2026 — Orientações de imagens no painel administrativo
+- **Componente reutilizável `ImageHelperText`** (`frontend/src/components/admin/ImageHelperText.jsx`): bloco compacto zinc-50 com badges de formato, dimensões recomendadas, proporção, limite de tamanho (echo do backend) e dicas com ícone. Puramente informativo — não bloqueia nem filtra uploads.
+- **Onde foi aplicado (7 campos de imagem):**
+  - `StoreSitesTab.jsx` → Logo do site (PNG/WEBP/JPG · 800×800 ou 1200×400 · máx 3 MB · fundo transparente recomendado), Capa (JPG/WEBP · 1920×600 · 16:9 · máx 5 MB · safe area no centro pois é reusada no mobile), Favicon (PNG/WEBP/ICO · 512×512 · máx 512 KB).
+  - `AdminPanel.jsx` BannerFormModal → Banner desktop (JPG/WEBP · 1920×500 · máx 8 MB) e Banner mobile (JPG/WEBP · 1080×1080 ou 1080×1350 · máx 8 MB · safe area).
+  - `AdminPanel.jsx` ServiceFormModal → Logo do serviço (PNG/WEBP/JPG · 400×400 · máx 8 MB) e Capa do serviço (JPG/WEBP · 1600×600 · máx 8 MB).
+  - `PhotoUploader.jsx` → Fotos de veículos (JPG/WEBP · 4:3 ou 16:9 · resolução mínima 1280 px · máx 8 MB) — beneficia tanto admin quanto lojista.
+- **Validações preservadas:** nenhuma validação de formato/tamanho foi reduzida ou removida. Os limites exibidos no helper são o valor real cobrado pelo backend (`upload_image_to_storage`: 8 MB, `upload_site_asset`: 3 MB/5 MB/512 KB). Uploads antigos continuam funcionando exatamente como antes.
+- **Responsividade:** helper usa `flex flex-wrap` — badges e dimensões quebram naturalmente em modais estreitos; sem regressão no desktop.
+- **Testes:** `pytest tests/` → **132 passed / 11 skipped**. `CI=true yarn build` → **Compiled successfully** (main.js 186.48 kB gzip, +1.67 kB).
+
 ### 20/Fev/2026 — Filtros avançados de busca de veículos (KM + Ordenação + Chips)
 - **Backend — `GET /api/vehicles`:** novos params `km_min`, `km_max`, `sort` (`recentes` | `preco_asc` | `preco_desc` | `ano_desc` | `km_asc`). `sort` desconhecido faz fallback silencioso para `recentes` (retrocompat). Nenhum filtro existente foi alterado.
 - **Backend — `GET /api/public/store-site`:** passa a aceitar os mesmos filtros (`q`, `category`, `brand`, `model`, `year_*`, `price_*`, `km_*`, `transmission`, `fuel`, `sort`) MAS o `dealer_id` do site é aplicado no `filt` ANTES dos params opcionais — jamais overridable via query. Passou a retornar `total` também.
