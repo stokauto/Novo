@@ -186,6 +186,114 @@ class TestUniqueness:
             admin_session.delete(f"{API}/admin/users/{idB}")
 
 
+class TestDeleteEndpoint:
+    """
+    DELETE /admin/store-sites/{dealer_id} — removes ONLY the site config
+    row. Dealer, vehicles, users, banners, services must all survive.
+    """
+
+    def test_delete_removes_site_only(self, admin_session, dealer):
+        sub = f"del-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+
+        # Create a vehicle so we can verify it survives the site deletion.
+        rv = dealer["session"].post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": "Fiat", "model": "Uno",
+            "year_made": 2020, "year_model": 2021, "km": 50000,
+            "price": 45000, "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        vid = rv.json()["id"]
+        admin_session.put(f"{API}/admin/vehicles/{vid}/status",
+                          json={"status": "active"})
+
+        # Delete the site
+        r = admin_session.delete(f"{API}/admin/store-sites/{dealer['id']}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("deleted") is True
+        assert body.get("dealer_id") == dealer["id"]
+
+        # Site is gone from admin listing
+        listing = admin_session.get(f"{API}/admin/store-sites").json()
+        assert all(s["dealer_id"] != dealer["id"] for s in listing)
+
+        # Public endpoints for the deleted subdomain → 404
+        r = requests.get(f"{API}/public/store-site", params={"sub": sub})
+        assert r.status_code == 404
+
+        # ---- Preservation invariants ----
+        # Dealer / user still exists and remains active
+        users = admin_session.get(f"{API}/admin/users").json()
+        me = next((u for u in users if u["id"] == dealer["id"]), None)
+        assert me is not None, "dealer was deleted (must not happen)"
+        assert me.get("status") == "active"
+
+        # Vehicle still exists in admin listing
+        vehicles = admin_session.get(f"{API}/admin/vehicles").json()
+        items = vehicles if isinstance(vehicles, list) else vehicles.get("items", [])
+        assert any(v["id"] == vid for v in items), "vehicle was deleted (must not happen)"
+
+        # Vehicle still appears in the main portal listing (status=active)
+        r = requests.get(f"{API}/vehicles", params={"dealer_id": dealer["id"]})
+        assert r.status_code == 200
+        assert any(v["id"] == vid for v in r.json()["items"])
+
+    def test_delete_requires_admin(self, dealer, admin_session):
+        # Create a site to attempt to delete
+        sub = f"nadm-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+
+        # Non-admin dealer session must be rejected
+        r = dealer["session"].delete(f"{API}/admin/store-sites/{dealer['id']}")
+        assert r.status_code in (401, 403)
+
+        # Unauthenticated must also be rejected
+        r = requests.delete(f"{API}/admin/store-sites/{dealer['id']}")
+        assert r.status_code in (401, 403)
+
+        # Site must still exist
+        listing = admin_session.get(f"{API}/admin/store-sites").json()
+        assert any(s["dealer_id"] == dealer["id"] for s in listing)
+
+    def test_delete_nonexistent_returns_404(self, admin_session):
+        r = admin_session.delete(f"{API}/admin/store-sites/does-not-exist")
+        assert r.status_code == 404
+
+    def test_delete_then_recreate_same_subdomain(self, admin_session, dealer):
+        # Admin can recreate the exact same subdomain after deletion.
+        sub = f"rec-{uuid.uuid4().hex[:6]}"
+        r = admin_session.post(f"{API}/admin/store-sites",
+                               json={"dealer_id": dealer["id"], "subdomain": sub})
+        assert r.status_code == 200
+        r = admin_session.delete(f"{API}/admin/store-sites/{dealer['id']}")
+        assert r.status_code == 200
+        r = admin_session.post(f"{API}/admin/store-sites",
+                               json={"dealer_id": dealer["id"], "subdomain": sub})
+        assert r.status_code == 200
+
+    def test_deactivate_still_works_and_is_reversible(self, admin_session, dealer):
+        # PATCH /status flow — non-destructive deactivation + reactivation.
+        sub = f"deact-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+
+        # Deactivate → public 404
+        r = admin_session.patch(f"{API}/admin/store-sites/{dealer['id']}/status",
+                                json={"site_active": False})
+        assert r.status_code == 200
+        r = requests.get(f"{API}/public/store-site", params={"sub": sub})
+        assert r.status_code == 404
+
+        # Reactivate → public 200
+        r = admin_session.patch(f"{API}/admin/store-sites/{dealer['id']}/status",
+                                json={"site_active": True})
+        assert r.status_code == 200
+        r = requests.get(f"{API}/public/store-site", params={"sub": sub})
+        assert r.status_code == 200
+
+
 class TestPublicEndpoint:
     def test_missing_subdomain_returns_404(self):
         # No Host header suffix, no override → primary → the endpoint has no site.

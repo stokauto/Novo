@@ -16,6 +16,16 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
+### 20/Fev/2026 — Gestão segura de sites white-label (Excluir + textos corretos)
+- **Backend:** novo `DELETE /admin/store-sites/{dealer_id}` (admin-only via `get_admin_user`). Remove APENAS a linha da coleção `store_sites` — dealer/users, vehicles, banners, services, leads, arquivos em object storage preservados.
+- **Frontend `StoreSitesTab.jsx`:**
+  - Nova ação por site: **Excluir** (ícone lixeira `Trash2`) com `window.confirm` explicando exatamente o que é apagado e o que é preservado.
+  - **Desativar** agora exige confirmação (Ativar continua 1-click por ser reversível).
+  - **Prévia** corrigida: aponta para `/loja/{subdomain}` na origem atual (nunca mais `?subdomain=` nem `sub.stockauto.com.br`).
+  - Textos antigos `subdominio.stockauto.com.br` substituídos em 4 locais: descrição do topo, tag de cada linha, sufixo do input (agora prefixo `/loja/`), rótulo do checkbox "Site ativo".
+- **Testes (`test_store_sites.py`):** nova classe `TestDeleteEndpoint` — delete preserva dealer/veículo/portal público, delete requer admin (401/403), delete inexistente = 404, delete + recreate mesmo subdomain, desativar/reativar segue funcionando (5 novos). **Total 141 passed / 11 skipped**.
+- **Build:** `CI=true yarn build` → **Compiled successfully** (main.js 187.22 kB).
+
 ### 20/Fev/2026 — Acesso white-label por rota (`/loja/:subdomain`)
 - **Backend:** `_resolve_site_from_request` agora aceita `sub_override` explícito (prioridade: `?sub=` > `X-StockAuto-Subdomain` header > Host). Endpoints `GET /api/public/store-site` e `GET /api/public/store-site/vehicle/{slug}` passam a aceitar `?sub=<subdomain>`. Toda validação continua no resolver (`ss_resolve_host`) — subdomínios reservados/inválidos rejeitados. Isolamento por `dealer_id` continua feito no backend antes de qualquer filtro.
 - **Frontend:** duas novas rotas em `App.js`, definidas **FORA** do `<Layout>` compartilhado (usando layout-route com `<Outlet/>`):

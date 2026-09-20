@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api, { fileUrl } from "@/lib/api";
 import {
   Plus, Pencil, ExternalLink, X, Check, Loader2, Store, Palette,
-  Image as ImageIcon, Upload,
+  Image as ImageIcon, Upload, Trash2,
 } from "lucide-react";
 import ImageHelperText from "./ImageHelperText";
 
@@ -44,16 +44,46 @@ export default function StoreSitesTab() {
   );
 
   const toggle = async (site) => {
+    // Ask for confirmation before deactivating (activation is safe and
+    // doesn't need a prompt).
+    if (site.site_active) {
+      const ok = typeof window !== "undefined" && window.confirm(
+        `Desativar o site "${site.subdomain}"?\n\n` +
+        `A página /loja/${site.subdomain} deixará de abrir publicamente. ` +
+        `A loja, os veículos, anúncios, usuários e fotos são preservados.\n\n` +
+        `Você pode reativar o site depois neste mesmo painel.`,
+      );
+      if (!ok) return;
+    }
     await api.patch(`/admin/store-sites/${site.dealer_id}/status`, {
       site_active: !site.site_active,
     });
     load();
   };
 
-  const previewUrl = (sub) => `https://${sub}.stockauto.com.br`;
-  const devPreviewUrl = (sub) => {
-    if (typeof window === "undefined") return "";
-    return `${window.location.origin}/?subdomain=${sub}`;
+  const remove = async (site) => {
+    const ok = typeof window !== "undefined" && window.confirm(
+      `Excluir a configuração do site "${site.subdomain}"?\n\n` +
+      `Isso removerá SOMENTE a configuração do site white-label. ` +
+      `A loja, os veículos, anúncios, usuários e fotos NÃO serão apagados.\n\n` +
+      `Depois de excluído, /loja/${site.subdomain} não abrirá mais. ` +
+      `Você pode recriar o site no botão "Criar site" quando quiser.`,
+    );
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/store-sites/${site.dealer_id}`);
+      load();
+    } catch (err) {
+      alert(err?.response?.data?.detail || "Erro ao excluir o site.");
+    }
+  };
+
+  // Public route used in production (path-based, no wildcard subdomain needed).
+  // The plataform Emergent does NOT support wildcard subdomains, so the
+  // preview and the shared URL are always this shape.
+  const publicRoute = (sub) => {
+    if (typeof window === "undefined") return `/loja/${sub}`;
+    return `${window.location.origin}/loja/${sub}`;
   };
 
   return (
@@ -62,10 +92,10 @@ export default function StoreSitesTab() {
         <div>
           <div className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500">Sites das lojas</div>
           <p className="text-sm text-zinc-600 mt-1 max-w-2xl">
-            Cada lojista ativo pode ter um site próprio em{" "}
-            <code className="bg-zinc-100 px-1.5 py-0.5 text-xs">subdominio.stockauto.com.br</code>.
-            Configure aqui o subdomínio e as cores. Uploads de logo, capa e favicon serão feitos
-            pelo lojista em uma etapa futura.
+            Cada lojista ativo pode ter um site próprio acessível em{" "}
+            <code className="bg-zinc-100 px-1.5 py-0.5 text-xs">stockauto.com.br/loja/&lt;subdomínio&gt;</code>.
+            Configure aqui o subdomínio e as cores. Uploads de logo, capa e favicon são feitos
+            na edição do site.
           </p>
         </div>
         <button
@@ -104,17 +134,18 @@ export default function StoreSitesTab() {
                   </span>
                 </div>
                 <div className="text-xs text-zinc-500 mt-1">
-                  <code className="bg-zinc-100 px-1">{s.subdomain}.stockauto.com.br</code>
+                  <code className="bg-zinc-100 px-1">/loja/{s.subdomain}</code>
                   {s.dealer && <span className="ml-2">· {s.dealer.city}/{s.dealer.uf}</span>}
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <a
-                  href={devPreviewUrl(s.subdomain)}
+                  href={publicRoute(s.subdomain)}
                   target="_blank"
                   rel="noopener noreferrer"
+                  data-testid={`apanel-storesite-preview-${s.dealer_id}`}
                   className="inline-flex items-center gap-1 border border-zinc-300 hover:border-black px-3 h-9 text-xs font-bold uppercase tracking-tight"
-                  title="Prévia em modo teste (usa query parameter no ambiente atual)"
+                  title="Abrir /loja/{subdomain} em nova aba"
                 >
                   <ExternalLink size={14} /> Prévia
                 </a>
@@ -132,6 +163,15 @@ export default function StoreSitesTab() {
                   aria-label="Editar site"
                 >
                   <Pencil size={16} />
+                </button>
+                <button
+                  data-testid={`apanel-storesite-delete-${s.dealer_id}`}
+                  onClick={() => remove(s)}
+                  className="p-2.5 border border-zinc-300 hover:border-[#FF3B30] hover:text-[#FF3B30]"
+                  aria-label="Excluir configuração do site"
+                  title="Excluir configuração do site (a loja, veículos e usuário são preservados)"
+                >
+                  <Trash2 size={16} />
                 </button>
               </div>
             </div>
@@ -334,9 +374,12 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
 
           <Field
             label="Subdomínio"
-            hint="Apenas letras minúsculas, números e hífen. Ex.: auto-silva"
+            hint="Apenas letras minúsculas, números e hífen. Ex.: auto-silva. A loja fica acessível em stockauto.com.br/loja/<subdomínio>."
           >
             <div className="flex">
+              <span className="inline-flex items-center px-3 h-12 bg-zinc-100 border border-r-0 border-zinc-300 text-sm text-zinc-600 font-mono">
+                /loja/
+              </span>
               <input
                 data-testid="apanel-storesite-form-subdomain"
                 value={form.subdomain}
@@ -345,9 +388,6 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
                 placeholder="auto-silva"
                 className="w-full h-12 px-4 border border-zinc-300 focus:border-black outline-none bg-white lowercase"
               />
-              <span className="inline-flex items-center px-3 h-12 bg-zinc-100 border border-l-0 border-zinc-300 text-sm text-zinc-600 font-mono">
-                .stockauto.com.br
-              </span>
             </div>
           </Field>
 
@@ -399,7 +439,7 @@ function StoreSiteFormModal({ site, dealers, dealerWithSite, onClose, onSaved })
               className="w-5 h-5 accent-black"
             />
             <span className="text-sm font-bold uppercase tracking-tight">
-              Site ativo (visível em {form.subdomain || "subdominio"}.stockauto.com.br)
+              Site ativo (visível em /loja/{form.subdomain || "<subdomínio>"})
             </span>
           </label>
 

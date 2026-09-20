@@ -1545,6 +1545,31 @@ async def admin_toggle_store_site(dealer_id: str, body: StoreSiteStatusIn,
     return ss_admin_view(await db.store_sites.find_one({"dealer_id": dealer_id}, {"_id": 0}))
 
 
+@api.delete("/admin/store-sites/{dealer_id}")
+async def admin_delete_store_site(dealer_id: str, user: dict = Depends(get_admin_user)):
+    """
+    Remove APENAS o registro do site white-label (coleção `store_sites`).
+
+    NÃO afeta:
+      - `users` (dealer permanece cadastrado e ativo);
+      - `vehicles` (todos os anúncios continuam no portal principal);
+      - `banners`, `services`, `leads` — coleções totalmente independentes;
+      - arquivos em object storage (logo/cover/favicon podem ser reaproveitados
+        se um novo site for criado depois).
+
+    Após a exclusão:
+      - `/loja/{subdomain}` retorna 404 amigável;
+      - o admin pode recriar o site via `POST /admin/store-sites` reutilizando
+        (ou trocando) o mesmo `subdomain`.
+
+    Endpoint restrito a administradores (via `get_admin_user`).
+    """
+    res = await db.store_sites.delete_one({"dealer_id": dealer_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Site não encontrado para este revendedor.")
+    return {"deleted": True, "dealer_id": dealer_id}
+
+
 # --- Site branding uploads (admin only) --------------------------------------
 # Each endpoint updates exactly ONE field of the store_sites document. The old
 # file is intentionally NOT deleted from storage in this iteration.
