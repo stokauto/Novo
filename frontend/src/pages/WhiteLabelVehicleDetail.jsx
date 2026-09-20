@@ -20,14 +20,22 @@ import { brl, km as kmFmt, txLabel, fuelLabel, vehiclePrice } from "@/lib/format
  *   - the vehicle is active and non-repasse,
  *   - the site is active.
  *
- * Renders WITHOUT the main StockAuto chrome (no header/menu/logo of the
- * portal, no "voltar ao StockAuto" link). The only "back" affordance points
- * to the tenant's own home ("/").
+ * Two entry modes (mirrors WhiteLabelSite):
+ *  - Host mode: subdomain resolved from host; back button → `/`.
+ *  - Path mode: subdomain read from URL (`/loja/:subdomain/veiculo/:slug`);
+ *    back button → `/loja/:subdomain`.
+ *
+ * Renders WITHOUT the main StockAuto chrome (no shared Layout wrapper).
  */
-export default function WhiteLabelVehicleDetail() {
-  const { slug } = useParams();
+export default function WhiteLabelVehicleDetail({ pathMode = false }) {
+  const params = useParams();
+  const slug = params.slug;
   const navigate = useNavigate();
-  const subdomain = useMemo(() => resolveSubdomain(), []);
+  const subdomain = useMemo(() => {
+    if (pathMode) return (params.subdomain || "").trim().toLowerCase() || null;
+    return resolveSubdomain();
+  }, [pathMode, params.subdomain]);
+  const backTo = pathMode && subdomain ? `/loja/${subdomain}` : "/";
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [active, setActive] = useState(0);
   const [lightbox, setLightbox] = useState(false);
@@ -41,12 +49,15 @@ export default function WhiteLabelVehicleDetail() {
         return;
       }
       try {
+        const axiosConfig = { withCredentials: false };
+        if (pathMode) {
+          axiosConfig.params = { sub: subdomain };
+        } else {
+          axiosConfig.headers = { "X-StockAuto-Subdomain": subdomain };
+        }
         const res = await axios.get(
           `${API_BASE}/public/store-site/vehicle/${encodeURIComponent(slug)}`,
-          {
-            headers: { "X-StockAuto-Subdomain": subdomain },
-            withCredentials: false,
-          },
+          axiosConfig,
         );
         if (!cancelled) setState({ loading: false, data: res.data, error: null });
       } catch (e) {
@@ -62,10 +73,10 @@ export default function WhiteLabelVehicleDetail() {
     }
     load();
     return () => { cancelled = true; };
-  }, [slug, subdomain]);
+  }, [slug, subdomain, pathMode]);
 
   if (state.loading) return <FullPageLoader />;
-  if (state.error) return <ErrorPage error={state.error} />;
+  if (state.error) return <ErrorPage error={state.error} backTo={backTo} />;
 
   const { site, dealer, vehicle: v } = state.data;
   const primary = site.primary_color || "#111111";
@@ -98,7 +109,7 @@ export default function WhiteLabelVehicleDetail() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate("/")}
+            onClick={() => navigate(backTo)}
             data-testid="wl-vehicle-back"
             className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-tight border-b-2 pb-0.5 hover:opacity-80"
             style={{ borderColor: primary, color: primary }}
@@ -250,7 +261,7 @@ export default function WhiteLabelVehicleDetail() {
 
         <div className="mt-12">
           <Link
-            to="/"
+            to={backTo}
             data-testid="wl-vehicle-back-bottom"
             className="inline-flex items-center gap-2 text-sm font-bold uppercase border-b-2 pb-0.5"
             style={{ borderColor: primary, color: primary }}
@@ -334,7 +345,7 @@ function FullPageLoader() {
   );
 }
 
-function ErrorPage({ error }) {
+function ErrorPage({ error, backTo = "/" }) {
   const messages = {
     not_a_tenant: {
       title: "Página do site da loja",
@@ -359,7 +370,7 @@ function ErrorPage({ error }) {
         </h1>
         <p className="mt-3 text-zinc-600">{m.desc}</p>
         <Link
-          to="/"
+          to={backTo}
           className="mt-8 inline-flex items-center gap-2 text-sm font-bold uppercase border-b-2 border-black pb-0.5"
         >
           <ArrowLeft size={16} /> Voltar ao estoque

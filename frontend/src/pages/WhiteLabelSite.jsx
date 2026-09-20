@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import axios from "axios";
 import { API_BASE, fileUrl } from "@/lib/api";
@@ -11,17 +12,23 @@ import { MapPin, Phone, Instagram, Facebook, Store, Loader2, AlertTriangle, Slid
 /**
  * White-label store site page.
  *
- * Renders a self-contained storefront for a single dealer, addressed via
- * `<subdomain>.stockauto.com.br` (production) or `?subdomain=<sub>` /
- * localStorage (development). The main StockAuto chrome (header, footer,
- * menu) is intentionally NOT rendered here — the App wrapper decides that
- * based on `isWhiteLabelMode()`.
+ * Two entry modes:
+ *  1. **Host mode** (production): `<sub>.stockauto.com.br` → App.js gates
+ *     the entire app into white-label mode; this component reads the
+ *     subdomain from `resolveSubdomain()`.
+ *  2. **Path mode** (production too, main portal): `stockauto.com.br/loja/:subdomain`
+ *     → App.js renders this component with `pathMode` and the subdomain
+ *     comes from the URL param via `useParams()`. In this mode the main
+ *     StockAuto chrome is NOT rendered because the route is defined outside
+ *     the shared `<Layout>` wrapper.
  *
- * Filtering: the client sends optional query params to
- * `/api/public/store-site`. The BACKEND enforces `dealer_id` isolation —
- * even if a user hand-crafts params, they can never see another store's
- * stock. We intentionally do NOT expose UF/City filters here because a
- * white-label store's inventory is inherently scoped to that dealer.
+ * In BOTH modes:
+ *  - Only the tenant's inventory is fetched. The backend does the isolation.
+ *  - The subdomain is passed via `?sub=` query param when in path mode and
+ *    via `X-StockAuto-Subdomain` header when in host mode. Never via
+ *    localStorage in production paths.
+ *  - Vehicle cards are linked according to the mode so the user stays
+ *    inside the correct URL scheme.
  */
 const FIELDS = [
   "q", "category", "brand", "model",
@@ -51,8 +58,17 @@ function countActive(f) {
   return n;
 }
 
-export default function WhiteLabelSite() {
-  const subdomain = useMemo(() => resolveSubdomain(), []);
+export default function WhiteLabelSite({ pathMode = false }) {
+  // Two-source subdomain resolution.
+  // `useParams` MUST be called unconditionally by hook rules; when the
+  // component runs in host mode the route has no `:subdomain` param and
+  // `params.subdomain` is undefined — we then fall back to the host resolver.
+  const params = useParams();
+  const subdomain = useMemo(() => {
+    if (pathMode) return (params.subdomain || "").trim().toLowerCase() || null;
+    return resolveSubdomain();
+  }, [pathMode, params.subdomain]);
+
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [form, setForm] = useState(emptyForm);
   // `applied` is the last committed form snapshot that drives the fetch.
@@ -69,13 +85,18 @@ export default function WhiteLabelSite() {
     }
     setFetching(true);
     try {
-      const params = {};
-      FIELDS.forEach((k) => { if (filters[k]) params[k] = filters[k]; });
-      const res = await axios.get(`${API_BASE}/public/store-site`, {
-        headers: { "X-StockAuto-Subdomain": subdomain },
-        params,
-        withCredentials: false,
-      });
+      const reqParams = {};
+      FIELDS.forEach((k) => { if (filters[k]) reqParams[k] = filters[k]; });
+      // In path mode we send `?sub=` so the backend doesn't have to trust
+      // the Host header; in host mode we keep the legacy X-StockAuto-Subdomain
+      // header (which is what dev/preview hosts and real subdomains rely on).
+      const axiosConfig = { params: reqParams, withCredentials: false };
+      if (pathMode) {
+        axiosConfig.params.sub = subdomain;
+      } else {
+        axiosConfig.headers = { "X-StockAuto-Subdomain": subdomain };
+      }
+      const res = await axios.get(`${API_BASE}/public/store-site`, axiosConfig);
       setState({ loading: false, data: res.data, error: null });
     } catch (e) {
       const status = e?.response?.status;
@@ -87,7 +108,7 @@ export default function WhiteLabelSite() {
     } finally {
       setFetching(false);
     }
-  }, [subdomain]);
+  }, [subdomain, pathMode]);
 
   useEffect(() => {
     load(emptyForm());
@@ -500,7 +521,16 @@ export default function WhiteLabelSite() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {vehicles.map((v) => (
-                <VehicleCard key={v.id} v={v} testIdBuilder={(id) => `wl-vehicle-${id}`} />
+                <VehicleCard
+                  key={v.id}
+                  v={v}
+                  testIdBuilder={(id) => `wl-vehicle-${id}`}
+                  toBuilder={
+                    pathMode
+                      ? (veh) => `/loja/${subdomain}/veiculo/${veh.slug || veh.id}`
+                      : undefined
+                  }
+                />
               ))}
             </div>
           )}

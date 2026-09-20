@@ -207,6 +207,115 @@ class TestPublicEndpoint:
         # public shape must not leak private/admin-only fields
         assert "password_hash" not in body["dealer"]
 
+    def test_query_param_sub_works(self, admin_session, dealer):
+        """
+        The path-based route `/loja/:subdomain` calls the backend with
+        `?sub=<subdomain>` (no header). Backend must accept this as an
+        equivalent override — same isolation guarantees apply.
+        """
+        sub = f"qs-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+
+        r = requests.get(f"{API}/public/store-site", params={"sub": sub})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["site"]["subdomain"] == sub
+        assert body["dealer"]["id"] == dealer["id"]
+
+    def test_query_param_sub_invalid_returns_404(self, admin_session):
+        # Reserved/invalid subdomains must be rejected, mirroring header handling.
+        r = requests.get(f"{API}/public/store-site", params={"sub": "www"})
+        assert r.status_code == 404
+        r = requests.get(f"{API}/public/store-site", params={"sub": "nope-not-a-real-store"})
+        assert r.status_code == 404
+
+    def test_query_param_sub_isolation(self, admin_session, dealer):
+        """
+        Cross-tenant isolation with the `?sub=` path — creating a second
+        dealer's vehicle and querying dealer A's site must never return B's stock.
+        """
+        subA = f"iso-a-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": subA})
+
+        # A's vehicle
+        rA = dealer["session"].post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": "Fiat", "model": "Palio",
+            "year_made": 2019, "year_model": 2020, "km": 30000,
+            "price": 42000, "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        vidA = rA.json()["id"]
+        admin_session.put(f"{API}/admin/vehicles/{vidA}/status", json={"status": "active"})
+
+        # Dealer B — different owner, different subdomain
+        emailB = f"wl-iso-b-{uuid.uuid4().hex[:8]}@test.com"
+        sB = requests.Session()
+        rB_reg = sB.post(f"{API}/auth/register", json={
+            "email": emailB, "password": "Test@1234",
+            "store_name": f"Iso B {uuid.uuid4().hex[:6]}",
+            "phone": "(67) 3000-0000", "whatsapp": "(67) 99000-2222",
+            "city": "Campo Grande", "uf": "MS", "plan_code": "loja",
+        })
+        assert rB_reg.status_code == 200
+        idB = rB_reg.json()["id"]
+        admin_session.put(f"{API}/admin/users/{idB}", json={"status": "active"})
+        sB2 = requests.Session()
+        sB2.post(f"{API}/auth/login", json={"email": emailB, "password": "Test@1234"})
+        rB = sB2.post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": "Fiat", "model": "Palio",
+            "year_made": 2019, "year_model": 2020, "km": 15000,
+            "price": 39000, "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        vidB = rB.json()["id"]
+        admin_session.put(f"{API}/admin/vehicles/{vidB}/status", json={"status": "active"})
+
+        try:
+            # 1) Listing via ?sub=subA → only A's stock
+            r = requests.get(f"{API}/public/store-site", params={"sub": subA})
+            assert r.status_code == 200
+            for v in r.json()["vehicles"]:
+                assert v["dealer_id"] == dealer["id"], "cross-tenant leak via ?sub="
+
+            # 2) Vehicle detail: A tries to fetch B's slug scoped to subA → 404
+            #    (find B's slug from admin listing)
+            vB = admin_session.get(f"{API}/admin/vehicles").json()
+            vB_slug = next(x.get("slug") for x in (vB if isinstance(vB, list) else vB.get("items", [])) if x.get("id") == vidB)
+            r = requests.get(
+                f"{API}/public/store-site/vehicle/{vB_slug}",
+                params={"sub": subA},
+            )
+            assert r.status_code == 404, "B's vehicle should never appear under subA"
+
+            # 3) Vehicle detail: A's slug scoped to subA → 200
+            vA = admin_session.get(f"{API}/admin/vehicles").json()
+            vA_slug = next(x.get("slug") for x in (vA if isinstance(vA, list) else vA.get("items", [])) if x.get("id") == vidA)
+            r = requests.get(
+                f"{API}/public/store-site/vehicle/{vA_slug}",
+                params={"sub": subA},
+            )
+            assert r.status_code == 200
+            assert r.json()["vehicle"]["dealer_id"] == dealer["id"]
+        finally:
+            admin_session.delete(f"{API}/admin/users/{idB}")
+
+    def test_query_param_sub_precedence(self, admin_session, dealer):
+        """
+        When both `?sub=` and `X-StockAuto-Subdomain` are provided, the
+        query param wins (path-based route is more explicit).
+        """
+        sub = f"prec-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+
+        r = requests.get(
+            f"{API}/public/store-site",
+            params={"sub": sub},
+            headers={"X-StockAuto-Subdomain": "www"},  # would be invalid on its own
+        )
+        assert r.status_code == 200
+        assert r.json()["site"]["subdomain"] == sub
+
     def test_inactive_site_returns_404(self, admin_session, dealer):
         sub = f"inactive-{uuid.uuid4().hex[:6]}"
         admin_session.post(f"{API}/admin/store-sites",

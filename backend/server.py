@@ -1610,10 +1610,25 @@ async def admin_store_site_upload_favicon(dealer_id: str,
 
 
 # --- Public tenant endpoint --------------------------------------------------
-async def _resolve_site_from_request(request: Request) -> Optional[dict]:
-    """Resolve the tenant site from Host or X-StockAuto-Subdomain header."""
+async def _resolve_site_from_request(request: Request, sub_override: Optional[str] = None) -> Optional[dict]:
+    """Resolve the tenant site.
+
+    Priority (first non-empty wins):
+      1. `sub_override` — explicit subdomain passed by the caller (used by
+         path-based routes like /loja/:subdomain that don't rely on Host
+         or on a custom header). Never trusts the value blindly — it is
+         re-validated by `ss_resolve_host` which rejects reserved words.
+      2. `X-StockAuto-Subdomain` header — legacy dev/preview override that
+         predates path-based routing.
+      3. Host header — the real production case for subdomain-based sites
+         (e.g. `menaprime.stockauto.com.br`).
+
+    Regardless of source, isolation is enforced downstream: the resolved
+    `subdomain` is looked up in `store_sites` and only that dealer_id's
+    inventory is ever surfaced.
+    """
     host = request.headers.get("host")
-    override = request.headers.get("x-stockauto-subdomain")
+    override = sub_override or request.headers.get("x-stockauto-subdomain")
     resolution = ss_resolve_host(host, override)
     if resolution["kind"] != "tenant":
         return None
@@ -1623,6 +1638,7 @@ async def _resolve_site_from_request(request: Request) -> Optional[dict]:
 @api.get("/public/store-site")
 async def public_store_site(
     request: Request,
+    sub: Optional[str] = None,
     q: Optional[str] = None,
     category: Optional[str] = None,
     brand: Optional[str] = None,
@@ -1639,7 +1655,7 @@ async def public_store_site(
     uf: Optional[str] = None,
     sort: Optional[str] = None,
 ):
-    site = await _resolve_site_from_request(request)
+    site = await _resolve_site_from_request(request, sub_override=sub)
     if not site or not site.get("site_active"):
         raise HTTPException(status_code=404, detail="Site não encontrado ou inativo.")
 
@@ -1709,19 +1725,21 @@ async def public_store_site(
 
 
 @api.get("/public/store-site/vehicle/{slug}")
-async def public_store_site_vehicle(slug: str, request: Request):
+async def public_store_site_vehicle(slug: str, request: Request, sub: Optional[str] = None):
     """
     Public vehicle detail scoped to the tenant white-label site.
 
     Behavior:
-      - Resolves the tenant site the same way `GET /public/store-site` does
-        (Host header or X-StockAuto-Subdomain override).
+      - Resolves the tenant site from either the `?sub=<subdomain>` query
+        param (used by the path-based /loja/:subdomain/veiculo/:slug route),
+        the `X-StockAuto-Subdomain` header, or the Host header — in that
+        order of precedence.
       - Returns 404 if the site is missing/inactive OR the dealer is not active.
       - Returns 404 when the vehicle does NOT belong to this dealer, is
         inactive, or is a repasse (B2B) ad — never leaking other stores' stock.
       - Never modifies any record.
     """
-    site = await _resolve_site_from_request(request)
+    site = await _resolve_site_from_request(request, sub_override=sub)
     if not site or not site.get("site_active"):
         raise HTTPException(status_code=404, detail="Site não encontrado ou inativo.")
 

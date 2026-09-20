@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate, Outlet } from "react-router-dom";
 import { useEffect } from "react";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -72,8 +72,17 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <ScrollToTop />
-          <Layout>
-            <Routes>
+          <Routes>
+            {/* Path-based white-label — rendered WITHOUT the shared Layout
+                so the main StockAuto chrome (header, menu, footer) never
+                appears on tenant pages. The subdomain is read from the URL
+                via useParams and passed to the backend as `?sub=`; no
+                localStorage fallback is used on the production domain. */}
+            <Route path="/loja/:subdomain" element={<WhiteLabelSite pathMode />} />
+            <Route path="/loja/:subdomain/veiculo/:slug" element={<WhiteLabelVehicleDetail pathMode />} />
+
+            {/* All remaining portal routes stay wrapped by the shared Layout. */}
+            <Route element={<Layout><Outlet /></Layout>}>
               <Route path="/" element={<Home />} />
               <Route path="/veiculos" element={<Listing />} />
               <Route path="/veiculo/:slug" element={<VehicleDetail />} />
@@ -123,8 +132,8 @@ function App() {
                 element={<RegionalLanding {...CAMPO_GRANDE_REGION} />}
               />
               <Route path="*" element={<ComingSoon title="Página não encontrada" />} />
-            </Routes>
-          </Layout>
+            </Route>
+          </Routes>
         </AuthProvider>
       </BrowserRouter>
     </div>

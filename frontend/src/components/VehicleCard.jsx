@@ -3,7 +3,7 @@ import { brl, vehiclePrice, km } from "@/lib/format";
 import { fileUrl } from "@/lib/api";
 import { MapPin, Flame } from "lucide-react";
 
-export default function VehicleCard({ v, testIdBuilder }) {
+export default function VehicleCard({ v, testIdBuilder, toBuilder }) {
   const photo = v.main_photo || (v.photos && v.photos[0]);
   const img = fileUrl(photo);
   const priceNum = Number(v.price);
@@ -15,9 +15,14 @@ export default function VehicleCard({ v, testIdBuilder }) {
   const hasOffer = validPrice && validOffer && offerNum < priceNum;
   const discountPct = hasOffer ? Math.round((1 - offerNum / priceNum) * 100) : 0;
 
+  // Default link: main portal detail. WhiteLabelSite in path-mode passes a
+  // toBuilder that yields `/loja/:subdomain/veiculo/:slug` so cards stay
+  // inside the tenant experience.
+  const to = toBuilder ? toBuilder(v) : `/veiculo/${v.slug || v.id}`;
+
   return (
     <Link
-      to={`/veiculo/${v.slug || v.id}`}
+      to={to}
       data-testid={testIdBuilder ? testIdBuilder(v.id) : undefined}
       className={`group flex flex-col bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_40px_rgb(0,0,0,0.12)] ${
         hasOffer ? "border-2 border-[#FF3B30]" : "border border-zinc-200"
