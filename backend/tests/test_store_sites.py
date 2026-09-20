@@ -250,6 +250,105 @@ class TestPublicEndpoint:
             assert v["dealer_id"] == dealer["id"]
             assert v.get("ad_type") != "repasse"
 
+    def test_filters_and_sort_scoped_to_dealer(self, admin_session, dealer):
+        """
+        The public store-site endpoint accepts search filters + sort, but
+        MUST enforce dealer_id isolation regardless of what the caller sends.
+        This test creates 2 dealers with distinct stock and verifies that:
+          - filters do not leak vehicles from another dealer,
+          - the km_max / sort params work as documented,
+          - the response includes the `total` field.
+        """
+        # Dealer A (from fixture)
+        subA = f"filta-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": subA})
+
+        # Create 2 A-vehicles with different km/price
+        for payload in [
+            {"category": "carro", "brand": "Fiat", "model": "Palio",
+             "year_made": 2019, "year_model": 2020, "km": 30000,
+             "price": 42000, "city": "Campo Grande", "uf": "MS", "ad_type": "public"},
+            {"category": "carro", "brand": "Fiat", "model": "Argo",
+             "year_made": 2021, "year_model": 2022, "km": 120000,
+             "price": 65000, "city": "Campo Grande", "uf": "MS", "ad_type": "public"},
+        ]:
+            r = dealer["session"].post(f"{API}/dealer/vehicles", json=payload)
+            vid = r.json()["id"]
+            admin_session.put(f"{API}/admin/vehicles/{vid}/status", json={"status": "active"})
+
+        # Dealer B — different owner, different subdomain
+        emailB = f"wl-b-{uuid.uuid4().hex[:8]}@test.com"
+        sB = requests.Session()
+        rB_reg = sB.post(f"{API}/auth/register", json={
+            "email": emailB, "password": "Test@1234",
+            "store_name": f"WL Store B {uuid.uuid4().hex[:6]}",
+            "phone": "(67) 3000-0000", "whatsapp": "(67) 99000-0001",
+            "city": "Campo Grande", "uf": "MS", "plan_code": "loja",
+        })
+        assert rB_reg.status_code == 200
+        idB = rB_reg.json()["id"]
+        admin_session.put(f"{API}/admin/users/{idB}", json={"status": "active"})
+        sB2 = requests.Session()
+        sB2.post(f"{API}/auth/login", json={"email": emailB, "password": "Test@1234"})
+
+        subB = f"filtb-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": idB, "subdomain": subB})
+        rB = sB2.post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": "Fiat", "model": "Palio",
+            "year_made": 2019, "year_model": 2020, "km": 15000,
+            "price": 39000, "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        vidB = rB.json()["id"]
+        admin_session.put(f"{API}/admin/vehicles/{vidB}/status", json={"status": "active"})
+
+        try:
+            # 1) Filter brand=Fiat on A — must return only A's Fiats
+            r = requests.get(f"{API}/public/store-site",
+                             params={"brand": "Fiat"},
+                             headers={"X-StockAuto-Subdomain": subA})
+            assert r.status_code == 200
+            body = r.json()
+            assert "total" in body
+            for v in body["vehicles"]:
+                assert v["dealer_id"] == dealer["id"]
+                assert v["brand"].lower() == "fiat"
+
+            # 2) km_max=50000 on A — must only keep the low-km vehicle
+            r = requests.get(f"{API}/public/store-site",
+                             params={"km_max": 50000},
+                             headers={"X-StockAuto-Subdomain": subA})
+            assert r.status_code == 200
+            vs = r.json()["vehicles"]
+            assert all(v["dealer_id"] == dealer["id"] for v in vs)
+            assert all(v.get("km", 0) <= 50000 for v in vs)
+
+            # 3) sort=preco_asc must return prices ascending
+            r = requests.get(f"{API}/public/store-site",
+                             params={"sort": "preco_asc"},
+                             headers={"X-StockAuto-Subdomain": subA})
+            assert r.status_code == 200
+            prices = [v["price"] for v in r.json()["vehicles"] if v.get("price") is not None]
+            if len(prices) >= 2:
+                assert prices == sorted(prices)
+
+            # 4) Isolation: even with model=Palio (matches both dealers)
+            # subA MUST NOT return B's Palio.
+            r = requests.get(f"{API}/public/store-site",
+                             params={"model": "Palio"},
+                             headers={"X-StockAuto-Subdomain": subA})
+            for v in r.json()["vehicles"]:
+                assert v["dealer_id"] == dealer["id"], "dealer isolation violated"
+
+            # 5) Unknown sort silently falls back to recentes
+            r = requests.get(f"{API}/public/store-site",
+                             params={"sort": "garbage"},
+                             headers={"X-StockAuto-Subdomain": subA})
+            assert r.status_code == 200
+        finally:
+            admin_session.delete(f"{API}/admin/users/{idB}")
+
 
 class TestResolver:
     def test_primary_host_ignored(self):

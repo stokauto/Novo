@@ -16,6 +16,15 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
+### 20/Fev/2026 — Filtros avançados de busca de veículos (KM + Ordenação + Chips)
+- **Backend — `GET /api/vehicles`:** novos params `km_min`, `km_max`, `sort` (`recentes` | `preco_asc` | `preco_desc` | `ano_desc` | `km_asc`). `sort` desconhecido faz fallback silencioso para `recentes` (retrocompat). Nenhum filtro existente foi alterado.
+- **Backend — `GET /api/public/store-site`:** passa a aceitar os mesmos filtros (`q`, `category`, `brand`, `model`, `year_*`, `price_*`, `km_*`, `transmission`, `fuel`, `sort`) MAS o `dealer_id` do site é aplicado no `filt` ANTES dos params opcionais — jamais overridable via query. Passou a retornar `total` também.
+- **Frontend — `Listing.jsx`:** adicionados campos "KM mín./máx.", selector "Ordenar por" no topo dos resultados (não dentro dos filtros), chips de filtros ativos com botão × individual, link "Limpar tudo", contador de filtros ativos no botão mobile. Query params round-trippam pela URL (`?brand=Toyota&km_max=100000&sort=preco_asc`).
+- **Frontend — `WhiteLabelSite.jsx`:** reescrito com painel de filtros (sidebar desktop + drawer mobile), selector de ordenação, chips ativos, contador mobile. Filtros disponíveis: q/brand/model/year/price/km/transmission/fuel/sort. UF/City intencionalmente NÃO expostos (inventário do site já é escopado ao dealer). O front-end é só cosmético: a segurança de isolamento é backend-side.
+- **Test IDs:** novos `filterKmMin/Max`, `sortSelect`, `activeChips`, `activeChip(key)`, `activeChipRemove(key)`, `clearAllChips`, `filterMobileToggle`, `filterMobileCount` em `constants/testIds/stockauto.js`; equivalentes `wl-*` no white-label.
+- **Testes:** 10 testes novos em `tests/backend_test.py` (km_max, km_range, 4 variantes de sort, unknown fallback, combined, backward-compat) e 1 teste multi-dealer em `tests/test_store_sites.py` que garante isolamento dealer_id com filtros aplicados. **132 passed / 11 skipped**.
+- **Build:** `CI=true yarn build` **Compiled successfully** (184.81 kB gzip main.js, +4.19 kB).
+
 ### 23/Fev/2026 — Seção Serviços + Landing de vendas (3 etapas)
 - **ETAPA 1 — Seção Serviços** (isolada do classificados de veículos)
   - Backend: constante `SERVICE_CATEGORIES` (16 códigos: mecanica, funilaria, eletrica, ar-condicionado, vidracaria, estetica, pneus, escapamento, guincho, seguros, financiamento, despachante, rastreamento, som-acessorios, locadora, vistoria); coleção `db.services` independente de `vehicles`

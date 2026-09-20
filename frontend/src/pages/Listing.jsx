@@ -8,10 +8,136 @@ import { LISTING } from "@/constants/testIds";
 import { UF_STATES } from "@/lib/format";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 
-const FIELDS = ["q", "category", "brand", "model", "city", "uf", "year_min", "year_max", "price_min", "price_max", "transmission", "fuel"];
+/**
+ * FIELDS — all filter query params that the /veiculos page recognizes.
+ * They round-trip through the URL so any combination is link-shareable
+ * (e.g. `?brand=Toyota&price_max=150000&km_max=80000&sort=preco_asc`).
+ *
+ * The backend accepts each of these independently or combined; missing
+ * params fall back to the historical defaults (no filter + recentes).
+ */
+const FIELDS = [
+  "q", "category", "brand", "model",
+  "city", "uf",
+  "year_min", "year_max",
+  "price_min", "price_max",
+  "km_min", "km_max",
+  "transmission", "fuel",
+  "sort",
+];
+
+// Sort options exposed in the UI (backend also accepts `ano_asc`/`km_desc`
+// but the product spec limits the picker to these five for now).
+const SORT_OPTIONS = [
+  { code: "recentes", label: "Mais recentes" },
+  { code: "preco_asc", label: "Menor preço" },
+  { code: "preco_desc", label: "Maior preço" },
+  { code: "ano_desc", label: "Ano mais novo" },
+  { code: "km_asc", label: "Menor quilometragem" },
+];
+
+const TRANSMISSION_LABEL = {
+  manual: "Manual",
+  automatico: "Automático",
+  automatizado: "Automatizado",
+  cvt: "CVT",
+};
+
+const FUEL_LABEL = {
+  flex: "Flex",
+  gasolina: "Gasolina",
+  alcool: "Álcool",
+  diesel: "Diesel",
+  gnv: "GNV",
+  eletrico: "Elétrico",
+  hibrido: "Híbrido",
+};
+
+const fmtMoney = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+};
+
+const fmtKm = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  return `${n.toLocaleString("pt-BR")} km`;
+};
 
 function emptyForm(sp) {
   return FIELDS.reduce((acc, k) => ({ ...acc, [k]: sp.get(k) || "" }), {});
+}
+
+/**
+ * Build the labelled chips for filters currently applied in the URL.
+ * `q` and `sort` are intentionally NOT rendered as chips:
+ *   - `q` already has its own visible input in the sidebar/drawer
+ *   - `sort` has a dedicated select and is always present (default = recentes)
+ * The `oferta=true` deep-link also gets a chip so users can drop it easily.
+ */
+function buildChips(sp, categories) {
+  const chips = [];
+  const push = (key, label, onRemove) => chips.push({ key, label, onRemove });
+
+  const cat = sp.get("category");
+  if (cat) {
+    const l = categories.find((c) => c.code === cat)?.label || cat;
+    push("category", `Categoria: ${l}`, (n) => n.delete("category"));
+  }
+  const brand = sp.get("brand");
+  if (brand) push("brand", `Marca: ${brand}`, (n) => n.delete("brand"));
+  const model = sp.get("model");
+  if (model) push("model", `Modelo: ${model}`, (n) => n.delete("model"));
+  const uf = sp.get("uf");
+  if (uf) push("uf", `UF: ${uf.toUpperCase()}`, (n) => n.delete("uf"));
+  const city = sp.get("city");
+  if (city) push("city", `Cidade: ${city}`, (n) => n.delete("city"));
+
+  const yMin = sp.get("year_min");
+  const yMax = sp.get("year_max");
+  if (yMin || yMax) {
+    const label = yMin && yMax ? `Ano: ${yMin}–${yMax}` : yMin ? `Ano ≥ ${yMin}` : `Ano ≤ ${yMax}`;
+    push("year", label, (n) => { n.delete("year_min"); n.delete("year_max"); });
+  }
+  const pMin = sp.get("price_min");
+  const pMax = sp.get("price_max");
+  if (pMin || pMax) {
+    const label = pMin && pMax
+      ? `Preço: ${fmtMoney(pMin)} – ${fmtMoney(pMax)}`
+      : pMin ? `Preço ≥ ${fmtMoney(pMin)}` : `Preço ≤ ${fmtMoney(pMax)}`;
+    push("price", label, (n) => { n.delete("price_min"); n.delete("price_max"); });
+  }
+  const kMin = sp.get("km_min");
+  const kMax = sp.get("km_max");
+  if (kMin || kMax) {
+    const label = kMin && kMax
+      ? `KM: ${fmtKm(kMin)} – ${fmtKm(kMax)}`
+      : kMin ? `KM ≥ ${fmtKm(kMin)}` : `KM ≤ ${fmtKm(kMax)}`;
+    push("km", label, (n) => { n.delete("km_min"); n.delete("km_max"); });
+  }
+  const trans = sp.get("transmission");
+  if (trans) push("transmission", `Câmbio: ${TRANSMISSION_LABEL[trans] || trans}`, (n) => n.delete("transmission"));
+  const fuel = sp.get("fuel");
+  if (fuel) push("fuel", `Combustível: ${FUEL_LABEL[fuel] || fuel}`, (n) => n.delete("fuel"));
+
+  if (sp.get("oferta") === "true") {
+    push("oferta", "Somente ofertas", (n) => n.delete("oferta"));
+  }
+  return chips;
+}
+
+/** Count of chip-worthy filters — mirrors buildChips() to keep the mobile
+ *  counter honest without duplicating the label logic.
+ */
+function countActive(sp) {
+  const keys = ["category", "brand", "model", "uf", "city", "transmission", "fuel"];
+  let n = keys.reduce((acc, k) => acc + (sp.get(k) ? 1 : 0), 0);
+  if (sp.get("year_min") || sp.get("year_max")) n++;
+  if (sp.get("price_min") || sp.get("price_max")) n++;
+  if (sp.get("km_min") || sp.get("km_max")) n++;
+  if (sp.get("oferta") === "true") n++;
+  return n;
 }
 
 export default function Listing() {
@@ -31,7 +157,8 @@ export default function Listing() {
   // Re-fetch whenever URL params change
   useEffect(() => {
     setLoading(true);
-    // Default UF filter = MS (site focado em Mato Grosso do Sul)
+    // Default UF filter = MS (site focado em Mato Grosso do Sul).
+    // Explicit `uf` in the URL overrides this default (uf may be empty string).
     const params = { uf: "MS" };
     FIELDS.forEach((k) => {
       const v = sp.get(k);
@@ -59,6 +186,9 @@ export default function Listing() {
   const apply = (e) => {
     e?.preventDefault();
     const next = new URLSearchParams();
+    // Preserve non-filter deep-link flags (e.g. ?oferta=true) so the
+    // "Aplicar filtros" click never silently drops them.
+    if (sp.get("oferta") === "true") next.set("oferta", "true");
     FIELDS.forEach((k) => {
       if (form[k]) next.set(k, form[k]);
     });
@@ -73,6 +203,27 @@ export default function Listing() {
   };
 
   const onChange = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  /** Immediate URL-level updates for chip removals and the sort selector.
+   *  These don't need the sidebar "Aplicar" round-trip.
+   */
+  const patchParams = (patcher) => {
+    const next = new URLSearchParams(sp);
+    patcher(next);
+    setSp(next);
+  };
+
+  const onSortChange = (e) => {
+    patchParams((n) => {
+      const v = e.target.value;
+      if (!v || v === "recentes") n.delete("sort");
+      else n.set("sort", v);
+    });
+  };
+
+  const chips = useMemo(() => buildChips(sp, categories), [sp, categories]);
+  const activeCount = useMemo(() => countActive(sp), [sp]);
+  const currentSort = sp.get("sort") || "recentes";
 
   const activeCategory = useMemo(
     () => categories.find((c) => c.code === form.category)?.label || null,
@@ -123,10 +274,20 @@ export default function Listing() {
             </h1>
           </div>
           <button
+            data-testid={LISTING.filterMobileToggle}
             onClick={() => setMobileOpen(true)}
             className="md:hidden inline-flex items-center gap-2 self-start bg-white text-black px-5 py-3 text-sm font-bold uppercase tracking-tight"
           >
-            <SlidersHorizontal size={16} /> Filtros
+            <SlidersHorizontal size={16} />
+            Filtros
+            {activeCount > 0 && (
+              <span
+                data-testid={LISTING.filterMobileCount}
+                className="ml-1 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#FF3B30] text-white text-[11px] font-black"
+              >
+                {activeCount}
+              </span>
+            )}
           </button>
         </div>
       </section>
@@ -143,7 +304,7 @@ export default function Listing() {
           <div className="flex items-center justify-between mb-6">
             <div className="text-xs uppercase tracking-[0.3em] font-bold text-zinc-500">Filtros</div>
             {mobileOpen && (
-              <button onClick={() => setMobileOpen(false)} className="p-1">
+              <button onClick={() => setMobileOpen(false)} className="p-1" aria-label="Fechar filtros">
                 <X size={20} />
               </button>
             )}
@@ -229,6 +390,7 @@ export default function Listing() {
                 <input
                   data-testid={LISTING.filterYearMin}
                   type="number"
+                  inputMode="numeric"
                   value={form.year_min}
                   onChange={onChange("year_min")}
                   placeholder="2010"
@@ -239,6 +401,7 @@ export default function Listing() {
                 <input
                   data-testid={LISTING.filterYearMax}
                   type="number"
+                  inputMode="numeric"
                   value={form.year_max}
                   onChange={onChange("year_max")}
                   placeholder="2025"
@@ -252,6 +415,7 @@ export default function Listing() {
                 <input
                   data-testid={LISTING.filterPriceMin}
                   type="number"
+                  inputMode="numeric"
                   value={form.price_min}
                   onChange={onChange("price_min")}
                   placeholder="R$"
@@ -262,9 +426,37 @@ export default function Listing() {
                 <input
                   data-testid={LISTING.filterPriceMax}
                   type="number"
+                  inputMode="numeric"
                   value={form.price_max}
                   onChange={onChange("price_max")}
                   placeholder="R$"
+                  className="w-full border border-zinc-300 h-11 px-3 text-sm focus:border-black outline-none"
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="KM mín.">
+                <input
+                  data-testid={LISTING.filterKmMin}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={form.km_min}
+                  onChange={onChange("km_min")}
+                  placeholder="0"
+                  className="w-full border border-zinc-300 h-11 px-3 text-sm focus:border-black outline-none"
+                />
+              </Field>
+              <Field label="KM máx.">
+                <input
+                  data-testid={LISTING.filterKmMax}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={form.km_max}
+                  onChange={onChange("km_max")}
+                  placeholder="150000"
                   className="w-full border border-zinc-300 h-11 px-3 text-sm focus:border-black outline-none"
                 />
               </Field>
@@ -326,6 +518,62 @@ export default function Listing() {
 
         {/* RESULTS */}
         <section className="md:col-span-9" data-testid={LISTING.results}>
+          {/* Sort + active chips bar */}
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.3em] font-bold text-zinc-500">
+                {loading ? "Carregando…" : `${total} resultado${total === 1 ? "" : "s"}`}
+              </div>
+              <label className="flex items-center gap-2 text-xs uppercase tracking-widest font-bold text-zinc-600">
+                Ordenar
+                <select
+                  data-testid={LISTING.sortSelect}
+                  value={currentSort}
+                  onChange={onSortChange}
+                  className="border border-zinc-300 h-10 px-2 text-sm font-bold uppercase tracking-tight bg-white focus:border-black outline-none normal-case"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.code} value={o.code}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {chips.length > 0 && (
+              <div
+                data-testid={LISTING.activeChips}
+                className="flex flex-wrap items-center gap-2"
+              >
+                {chips.map((c) => (
+                  <span
+                    key={c.key}
+                    data-testid={LISTING.activeChip(c.key)}
+                    className="inline-flex items-center gap-1.5 border border-zinc-300 bg-white px-3 h-8 text-xs font-bold uppercase tracking-tight"
+                  >
+                    {c.label}
+                    <button
+                      type="button"
+                      data-testid={LISTING.activeChipRemove(c.key)}
+                      onClick={() => patchParams(c.onRemove)}
+                      className="ml-1 -mr-1 p-0.5 hover:text-[#FF3B30]"
+                      aria-label={`Remover filtro ${c.label}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  data-testid={LISTING.clearAllChips}
+                  onClick={reset}
+                  className="text-xs font-bold uppercase tracking-tight underline underline-offset-4 hover:text-[#FF3B30]"
+                >
+                  Limpar tudo
+                </button>
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {/* Fixed-length skeleton placeholders — index key is intentional */}

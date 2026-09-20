@@ -143,6 +143,91 @@ class TestPublic:
         for v in r.json()["items"]:
             assert "goi" in v["city"].lower()
 
+    def test_vehicles_filter_km_max(self, client):
+        # Any vehicle returned must have km <= threshold when present.
+        # If the DB has no active vehicles the shape is still validated.
+        r = client.get(f"{API}/vehicles?km_max=80000", timeout=30)
+        assert r.status_code == 200
+        d = r.json()
+        assert "items" in d and "total" in d
+        for v in d["items"]:
+            if v.get("km") is not None:
+                assert v["km"] <= 80000
+
+    def test_vehicles_filter_km_range(self, client):
+        r = client.get(f"{API}/vehicles?km_min=10000&km_max=200000", timeout=30)
+        assert r.status_code == 200
+        for v in r.json()["items"]:
+            if v.get("km") is not None:
+                assert 10000 <= v["km"] <= 200000
+
+    def test_vehicles_sort_preco_asc(self, client):
+        r = client.get(f"{API}/vehicles?sort=preco_asc&limit=20", timeout=30)
+        assert r.status_code == 200
+        prices = [v["price"] for v in r.json()["items"] if v.get("price") is not None]
+        if len(prices) < 2:
+            pytest.skip("insufficient priced vehicles for sort assertion")
+        assert prices == sorted(prices), "preco_asc must return ascending prices"
+
+    def test_vehicles_sort_preco_desc(self, client):
+        r = client.get(f"{API}/vehicles?sort=preco_desc&limit=20", timeout=30)
+        assert r.status_code == 200
+        prices = [v["price"] for v in r.json()["items"] if v.get("price") is not None]
+        if len(prices) < 2:
+            pytest.skip("insufficient priced vehicles for sort assertion")
+        assert prices == sorted(prices, reverse=True), "preco_desc must return descending prices"
+
+    def test_vehicles_sort_ano_desc(self, client):
+        r = client.get(f"{API}/vehicles?sort=ano_desc&limit=20", timeout=30)
+        assert r.status_code == 200
+        years = [v["year_model"] for v in r.json()["items"] if v.get("year_model") is not None]
+        if len(years) < 2:
+            pytest.skip("insufficient vehicles with year_model for sort assertion")
+        assert years == sorted(years, reverse=True), "ano_desc must return newest years first"
+
+    def test_vehicles_sort_km_asc(self, client):
+        r = client.get(f"{API}/vehicles?sort=km_asc&limit=20", timeout=30)
+        assert r.status_code == 200
+        kms = [v["km"] for v in r.json()["items"] if v.get("km") is not None]
+        if len(kms) < 2:
+            pytest.skip("insufficient vehicles with km for sort assertion")
+        assert kms == sorted(kms), "km_asc must return ascending km"
+
+    def test_vehicles_sort_unknown_fallback(self, client):
+        # Unknown sort values must NOT break the endpoint — they silently
+        # fall back to `recentes` (created_at desc). Backward compatibility.
+        r = client.get(f"{API}/vehicles?sort=garbage_value", timeout=30)
+        assert r.status_code == 200
+        assert "items" in r.json()
+
+    def test_vehicles_combined_filters_km_sort(self, client):
+        # A realistic combined query — filters + sort together.
+        r = client.get(
+            f"{API}/vehicles?brand=Toyota&km_max=100000&year_min=2018&sort=preco_asc&limit=10",
+            timeout=30,
+        )
+        assert r.status_code == 200
+        for v in r.json()["items"]:
+            assert v["brand"].lower() == "toyota"
+            if v.get("km") is not None:
+                assert v["km"] <= 100000
+            if v.get("year_model") is not None:
+                assert v["year_model"] >= 2018
+        prices = [v["price"] for v in r.json()["items"] if v.get("price") is not None]
+        if len(prices) >= 2:
+            assert prices == sorted(prices)
+
+    def test_vehicles_no_filter_backward_compat(self, client):
+        # No sort param — must behave EXACTLY as before (recentes).
+        r = client.get(f"{API}/vehicles?limit=5", timeout=30)
+        assert r.status_code == 200
+        d = r.json()
+        assert "items" in d and "total" in d
+        # Response shape unchanged
+        for v in d["items"]:
+            assert v.get("status") == "active"
+            assert "_id" not in v
+
     def test_vehicle_detail_by_slug(self, client):
         listing = client.get(f"{API}/vehicles", timeout=30).json()
         if not listing["items"]:

@@ -838,6 +838,17 @@ async def public_settings():
     }
 
 
+# Sort options accepted by the public vehicle search.
+# Any unknown value silently falls back to "recentes" to keep older links working.
+_VEHICLE_SORT_MAP = {
+    "recentes": [("created_at", -1)],
+    "preco_asc": [("price", 1), ("created_at", -1)],
+    "preco_desc": [("price", -1), ("created_at", -1)],
+    "ano_desc": [("year_model", -1), ("created_at", -1)],
+    "km_asc": [("km", 1), ("created_at", -1)],
+}
+
+
 @api.get("/vehicles")
 async def list_vehicles(
     q: Optional[str] = None,
@@ -850,6 +861,8 @@ async def list_vehicles(
     year_max: Optional[int] = None,
     price_min: Optional[float] = None,
     price_max: Optional[float] = None,
+    km_min: Optional[int] = None,
+    km_max: Optional[int] = None,
     city: Optional[str] = None,
     uf: Optional[str] = None,
     dealer_id: Optional[str] = None,
@@ -857,6 +870,7 @@ async def list_vehicles(
     featured: Optional[bool] = None,
     has_offer: Optional[bool] = None,
     ad_type: Optional[str] = None,
+    sort: Optional[str] = None,
     limit: int = 30,
     skip: int = 0,
 ):
@@ -888,6 +902,12 @@ async def list_vehicles(
             filt["price"]["$gte"] = price_min
         if price_max:
             filt["price"]["$lte"] = price_max
+    if km_min is not None or km_max is not None:
+        filt["km"] = {}
+        if km_min is not None:
+            filt["km"]["$gte"] = km_min
+        if km_max is not None:
+            filt["km"]["$lte"] = km_max
     if city:
         filt["city"] = {"$regex": re.escape(city), "$options": "i"}
     if uf:
@@ -903,7 +923,8 @@ async def list_vehicles(
         rx = re.compile(re.escape(q), re.IGNORECASE)
         filt["$or"] = [{"brand": rx}, {"model": rx}, {"version": rx}, {"description": rx}, {"city": rx}]
 
-    cur = db.vehicles.find(filt, {"_id": 0}).sort("created_at", -1).skip(skip).limit(min(limit, 100))
+    sort_spec = _VEHICLE_SORT_MAP.get(sort or "recentes", _VEHICLE_SORT_MAP["recentes"])
+    cur = db.vehicles.find(filt, {"_id": 0}).sort(sort_spec).skip(skip).limit(min(limit, 100))
     items = []
     async for v in cur:
         items.append(await vehicle_with_dealer(v))
@@ -1600,7 +1621,24 @@ async def _resolve_site_from_request(request: Request) -> Optional[dict]:
 
 
 @api.get("/public/store-site")
-async def public_store_site(request: Request):
+async def public_store_site(
+    request: Request,
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    brand: Optional[str] = None,
+    model: Optional[str] = None,
+    transmission: Optional[str] = None,
+    fuel: Optional[str] = None,
+    year_min: Optional[int] = None,
+    year_max: Optional[int] = None,
+    price_min: Optional[float] = None,
+    price_max: Optional[float] = None,
+    km_min: Optional[int] = None,
+    km_max: Optional[int] = None,
+    city: Optional[str] = None,
+    uf: Optional[str] = None,
+    sort: Optional[str] = None,
+):
     site = await _resolve_site_from_request(request)
     if not site or not site.get("site_active"):
         raise HTTPException(status_code=404, detail="Site não encontrado ou inativo.")
@@ -1612,19 +1650,61 @@ async def public_store_site(request: Request):
     if not dealer or dealer.get("status") != "active":
         raise HTTPException(status_code=404, detail="Loja indisponível no momento.")
 
-    # Filter vehicles ON THE BACKEND — never expose other dealers' stock.
+    # dealer_id LOCK — never overridable via query params.
+    # We rebuild `filt` scoped to this tenant BEFORE applying optional filters.
+    filt: dict = {
+        "dealer_id": site["dealer_id"],
+        "status": "active",
+        "ad_type": {"$ne": "repasse"},
+    }
+    if category:
+        filt["category"] = category
+    if brand:
+        filt["brand"] = {"$regex": f"^{re.escape(brand)}$", "$options": "i"}
+    if model:
+        filt["model"] = {"$regex": re.escape(model), "$options": "i"}
+    if transmission:
+        filt["transmission"] = norm_choice(transmission)
+    if fuel:
+        filt["fuel"] = norm_choice(fuel)
+    if year_min or year_max:
+        filt["year_model"] = {}
+        if year_min:
+            filt["year_model"]["$gte"] = year_min
+        if year_max:
+            filt["year_model"]["$lte"] = year_max
+    if price_min or price_max:
+        filt["price"] = {}
+        if price_min:
+            filt["price"]["$gte"] = price_min
+        if price_max:
+            filt["price"]["$lte"] = price_max
+    if km_min is not None or km_max is not None:
+        filt["km"] = {}
+        if km_min is not None:
+            filt["km"]["$gte"] = km_min
+        if km_max is not None:
+            filt["km"]["$lte"] = km_max
+    if city:
+        filt["city"] = {"$regex": re.escape(city), "$options": "i"}
+    if uf:
+        filt["uf"] = uf.upper()
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        filt["$or"] = [{"brand": rx}, {"model": rx}, {"version": rx}, {"description": rx}]
+
+    sort_spec = _VEHICLE_SORT_MAP.get(sort or "recentes", _VEHICLE_SORT_MAP["recentes"])
     vehicles = []
-    cur = db.vehicles.find(
-        {"dealer_id": site["dealer_id"], "status": "active", "ad_type": {"$ne": "repasse"}},
-        {"_id": 0},
-    ).sort("created_at", -1).limit(120)
+    cur = db.vehicles.find(filt, {"_id": 0}).sort(sort_spec).limit(120)
     async for v in cur:
         vehicles.append(v)
+    total = await db.vehicles.count_documents(filt)
 
     return {
         "site": ss_public_view(site),
         "dealer": public_dealer_card(dealer),
         "vehicles": vehicles,
+        "total": total,
     }
 
 
