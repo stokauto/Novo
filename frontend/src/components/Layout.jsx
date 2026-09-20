@@ -129,7 +129,14 @@ export default function Layout({ children }) {
       <footer className="bg-black text-white mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 grid grid-cols-1 md:grid-cols-4 gap-10">
           <div className="md:col-span-2">
-            <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-12 w-auto" />
+            <a
+              href="https://www.stockauto.com.br"
+              aria-label="Abrir stockauto.com.br"
+              data-testid="footer-logo-link"
+              className="inline-block"
+            >
+              <img src="/logo-stockauto-dark.png" alt="StockAuto" className="h-12 w-auto" />
+            </a>
             <p className="mt-5 text-zinc-400 max-w-md leading-relaxed">
               Classificados de veículos seminovos em Campo Grande e todo o Mato Grosso do Sul.
               Anúncios verificados, contato direto via WhatsApp e Hub de Repasse B2B para lojistas.
@@ -209,8 +216,16 @@ export default function Layout({ children }) {
             </div>
           </div>
         </div>
-        <div className="border-t border-zinc-900 py-6 text-center text-xs text-zinc-500">
-          © {new Date().getFullYear()} StockAuto — Todos os direitos reservados.
+        <div className="border-t border-zinc-900 py-6 text-center text-xs text-zinc-500" data-testid="footer-copyright">
+          © {new Date().getFullYear()} — Todos os direitos reservados à{" "}
+          <a
+            href="https://www.stockauto.com.br"
+            className="text-zinc-400 hover:text-white font-bold"
+            data-testid="footer-copyright-link"
+          >
+            StockAuto
+          </a>
+          .
         </div>
       </footer>
     </div>

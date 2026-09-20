@@ -5,6 +5,7 @@ import { API_BASE, fileUrl } from "@/lib/api";
 import { resolveSubdomain } from "@/lib/whiteLabel";
 import VehicleCard from "@/components/VehicleCard";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import ShareControls from "@/components/ShareControls";
 import { MapPin, Phone, Instagram, Facebook, Store, Loader2, AlertTriangle } from "lucide-react";
 
 /**
@@ -131,7 +132,7 @@ export default function WhiteLabelSite() {
               {site.about_text}
             </p>
           )}
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-6 flex flex-wrap gap-3 items-center">
             {dealer.whatsapp && (
               <WhatsAppButton
                 whatsapp={dealer.whatsapp}
@@ -149,6 +150,12 @@ export default function WhiteLabelSite() {
                 <Phone size={16} /> {dealer.phone}
               </a>
             )}
+            <ShareControls
+              title={`${dealer.store_name} — ${dealer.city}/${dealer.uf}`}
+              text="Confira a vitrine da loja"
+              testid="wl-hero-share"
+              compact
+            />
           </div>
         </div>
       </section>

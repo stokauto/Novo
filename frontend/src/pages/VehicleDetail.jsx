@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api, { fileUrl } from "@/lib/api";
 import { brl, vehiclePrice, km, waLink, digits, txLabel, fuelLabel } from "@/lib/format";
+import ShareControls from "@/components/ShareControls";
 import WhatsAppButton, { WhatsAppIcon } from "@/components/WhatsAppButton";
 import SEO, { SITE_URL } from "@/components/SEO";
 import { DETAIL } from "@/constants/testIds";
-import { MapPin, Phone, Share2, Copy, ArrowLeft, Check, Calendar, Gauge, Fuel, Settings, Palette, ChevronLeft, ChevronRight, X, ZoomIn, Play } from "lucide-react";
+import { MapPin, Phone, ArrowLeft, Check, Calendar, Gauge, Fuel, Settings, Palette, ChevronLeft, ChevronRight, X, ZoomIn, Play } from "lucide-react";
 
 export default function VehicleDetail() {
   const { slug } = useParams();
@@ -325,23 +326,12 @@ export default function VehicleDetail() {
           </div>
 
           {/* SHARE */}
-          <div className="mt-6 flex items-center gap-2">
-            <a
-              href={waLink("", shareMsg)}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid={DETAIL.shareWhatsapp}
-              className="flex-1 inline-flex items-center justify-center gap-2 border border-zinc-300 h-11 text-xs font-bold uppercase tracking-tight hover:border-black"
-            >
-              <Share2 size={14} /> Compartilhar
-            </a>
-            <button
-              onClick={copyLink}
-              data-testid={DETAIL.shareCopy}
-              className="flex-1 inline-flex items-center justify-center gap-2 border border-zinc-300 h-11 text-xs font-bold uppercase tracking-tight hover:border-black"
-            >
-              {copied ? <><Check size={14} /> Copiado</> : <><Copy size={14} /> Copiar link</>}
-            </button>
+          <div className="mt-6" data-testid={DETAIL.shareWhatsapp}>
+            <ShareControls
+              title={`${v.brand} ${v.model} ${v.year_model}`}
+              text={shareMsg}
+              testid="detail-share"
+            />
           </div>
         </aside>
       </div>

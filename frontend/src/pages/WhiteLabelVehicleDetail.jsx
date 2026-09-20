@@ -5,6 +5,7 @@ import axios from "axios";
 import { API_BASE, fileUrl } from "@/lib/api";
 import { resolveSubdomain } from "@/lib/whiteLabel";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import ShareControls from "@/components/ShareControls";
 import {
   ArrowLeft, MapPin, Phone, Calendar, Gauge, Fuel, Settings, Palette,
   ChevronLeft, ChevronRight, X, ZoomIn, Play, Loader2, AlertTriangle,
@@ -234,6 +235,14 @@ export default function WhiteLabelVehicleDetail() {
                     <Phone size={16} /> {dealer.phone}
                   </a>
                 )}
+              </div>
+
+              <div className="mt-3 pt-4 border-t border-zinc-100">
+                <ShareControls
+                  title={`${title} — ${dealer.store_name}`}
+                  text={`Confira este ${v.brand} ${v.model} na ${dealer.store_name}`}
+                  testid="wl-vehicle-share"
+                />
               </div>
             </div>
           </aside>
