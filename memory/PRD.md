@@ -16,6 +16,16 @@ Marketplace de veículos B2C com foco em Campo Grande/MS. Compradores chegam por
 
 ## Implementado
 
+### 20/Fev/2026 — Acesso white-label por rota (`/loja/:subdomain`)
+- **Backend:** `_resolve_site_from_request` agora aceita `sub_override` explícito (prioridade: `?sub=` > `X-StockAuto-Subdomain` header > Host). Endpoints `GET /api/public/store-site` e `GET /api/public/store-site/vehicle/{slug}` passam a aceitar `?sub=<subdomain>`. Toda validação continua no resolver (`ss_resolve_host`) — subdomínios reservados/inválidos rejeitados. Isolamento por `dealer_id` continua feito no backend antes de qualquer filtro.
+- **Frontend:** duas novas rotas em `App.js`, definidas **FORA** do `<Layout>` compartilhado (usando layout-route com `<Outlet/>`):
+  - `/loja/:subdomain` → `<WhiteLabelSite pathMode />`
+  - `/loja/:subdomain/veiculo/:slug` → `<WhiteLabelVehicleDetail pathMode />`
+- Ambas as páginas ganharam prop `pathMode`: quando true, leem o subdomain via `useParams()` e enviam `?sub=` ao backend; quando false, continuam com o fluxo original (host + `X-StockAuto-Subdomain` header). Nenhum caminho depende de localStorage no domínio de produção.
+- **Links internos:** `VehicleCard` ganhou prop `toBuilder`; em path-mode os cards apontam para `/loja/{sub}/veiculo/{slug}`. Botão "Voltar ao estoque" e ErrorPage do `WhiteLabelVehicleDetail` agora usam `backTo` calculado (`/loja/{sub}` no path-mode, `/` no host-mode). ShareControls continua usando `window.location.href` — automaticamente compartilha a URL correta.
+- **Testes:** 4 novos em `test_store_sites.py` — `?sub=` válido (200), reservado/inexistente (404), precedência sobre header, isolamento cross-tenant. Total **136 passed / 11 skipped**.
+- **Compatibilidade:** `/`, `/veiculos`, `/veiculo/:slug`, `/painel`, `/admin`, resolver de segurança do domínio oficial e ignore de `?subdomain=` em `www./stockauto.com.br` — todos inalterados.
+
 ### 20/Fev/2026 — Orientações de imagens no painel administrativo
 - **Componente reutilizável `ImageHelperText`** (`frontend/src/components/admin/ImageHelperText.jsx`): bloco compacto zinc-50 com badges de formato, dimensões recomendadas, proporção, limite de tamanho (echo do backend) e dicas com ícone. Puramente informativo — não bloqueia nem filtra uploads.
 - **Onde foi aplicado (7 campos de imagem):**
