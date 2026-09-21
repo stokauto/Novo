@@ -174,7 +174,11 @@ export default function WhiteLabelSite({ pathMode = false }) {
         )}
       </Helmet>
 
-      {/* Tenant header (no StockAuto chrome) */}
+      {/* Tenant header (no StockAuto chrome).
+          The WhatsApp button used to live here on mobile too — it duplicated
+          the primary CTA that appears right below the hero description.
+          Removed to keep the header clean; users still get the WhatsApp CTA
+          in the hero section (visible on all viewports). */}
       <header
         data-testid="wl-header"
         className="border-b sticky top-0 z-40 bg-white/95 backdrop-blur"
@@ -198,15 +202,6 @@ export default function WhiteLabelSite({ pathMode = false }) {
               <MapPin size={12} /> {dealer.city}/{dealer.uf}
             </div>
           </div>
-          {dealer.whatsapp && (
-            <WhatsAppButton
-              whatsapp={dealer.whatsapp}
-              message={`Olá ${dealer.store_name}, vi o site de vocês.`}
-              label="WhatsApp"
-              size="md"
-              data-testid="wl-header-wa"
-            />
-          )}
         </div>
       </header>
 

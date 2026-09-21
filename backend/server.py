@@ -21,7 +21,7 @@ from typing import List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Query, Form
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import PlainTextResponse, Response as FastAPIResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, Response as FastAPIResponse, JSONResponse, HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -1792,6 +1792,247 @@ async def public_store_site_vehicle(slug: str, request: Request, sub: Optional[s
         "dealer": public_dealer_card(dealer),
         "vehicle": await vehicle_with_dealer(v),
     }
+
+
+# ============================================================================
+# WHITE-LABEL SHARE-PREVIEW HTML ENDPOINTS
+# ----------------------------------------------------------------------------
+# The SPA at `/loja/:subdomain[/veiculo/:slug]` can't inject dynamic OG tags
+# into the initial HTML (crawlers like WhatsApp/Facebook do NOT execute JS).
+# These endpoints return a minimal HTML page with the correct OG/Twitter tags
+# for social crawlers and a meta-refresh (+ noscript link) that instantly
+# redirects a real user to the SPA route.
+#
+# ShareControls in the tenant pages points its share URL to `/api/share/...`
+# so WhatsApp scrapes THIS HTML — the actual `/loja/...` route stays a
+# regular SPA route and continues to work exactly as before for humans.
+#
+# Never leaks other dealers' data — same `dealer_id` isolation as the JSON
+# endpoints above.
+# ============================================================================
+def _abs_origin(request: Request) -> str:
+    """Return `<scheme>://<host>` (no trailing slash) inferred from the
+    incoming request. Honors X-Forwarded-Proto/Host set by the ingress."""
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        # str(request.base_url) always ends with `/`
+        return str(request.base_url).rstrip("/")
+    return f"{proto}://{host}"
+
+
+def _abs_file_url(origin: str, path: Optional[str]) -> Optional[str]:
+    """Convert an object-storage relative path to a public absolute URL.
+
+    Returns None when the path is missing so callers can decide the fallback.
+    """
+    if not path:
+        return None
+    return f"{origin}/api/files/{path}"
+
+
+def _first_photo(v: dict) -> Optional[str]:
+    photos = v.get("photos") or []
+    if photos and isinstance(photos, list):
+        p = next((x for x in photos if x), None)
+        if p:
+            return p
+    return v.get("main_photo")
+
+
+_HTML_ESCAPE = str.maketrans({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+})
+
+
+def _esc(s: Optional[str]) -> str:
+    if not s:
+        return ""
+    return str(s).translate(_HTML_ESCAPE)
+
+
+def _render_share_html(*, canonical_url: str, title: str, description: str,
+                       image: Optional[str], site_name: str) -> str:
+    """Render the crawler-friendly HTML with OG/Twitter tags + meta-refresh."""
+    safe_title = _esc(title)[:200]
+    safe_desc = _esc(description)[:300]
+    safe_url = _esc(canonical_url)
+    safe_site = _esc(site_name)[:100]
+    safe_image = _esc(image) if image else ""
+    image_tags = ""
+    if safe_image:
+        image_tags = (
+            f'<meta property="og:image" content="{safe_image}" />'
+            f'<meta property="og:image:secure_url" content="{safe_image}" />'
+            f'<meta name="twitter:image" content="{safe_image}" />'
+        )
+    twitter_card = "summary_large_image" if safe_image else "summary"
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>{safe_title}</title>
+<meta name="description" content="{safe_desc}" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="{safe_site}" />
+<meta property="og:title" content="{safe_title}" />
+<meta property="og:description" content="{safe_desc}" />
+<meta property="og:url" content="{safe_url}" />
+{image_tags}
+<meta name="twitter:card" content="{twitter_card}" />
+<meta name="twitter:title" content="{safe_title}" />
+<meta name="twitter:description" content="{safe_desc}" />
+<meta http-equiv="refresh" content="0; url={safe_url}" />
+<link rel="canonical" href="{safe_url}" />
+</head>
+<body>
+<noscript><a href="{safe_url}">Abrir {safe_title}</a></noscript>
+<script>window.location.replace({safe_url!r});</script>
+</body>
+</html>"""
+
+
+@api.get("/share/loja/{subdomain}", response_class=HTMLResponse)
+async def share_store_site(subdomain: str, request: Request):
+    """Crawler-friendly share preview for /loja/{subdomain}."""
+    origin = _abs_origin(request)
+    canonical = f"{origin}/loja/{subdomain}"
+
+    site = await _resolve_site_from_request(request, sub_override=subdomain)
+    if not site or not site.get("site_active"):
+        # Return a minimal HTML (still 200 so WhatsApp shows something friendly)
+        # but with a redirect to /loja/{sub} where the SPA renders the 404.
+        html = _render_share_html(
+            canonical_url=canonical,
+            title="Site indisponível — StockAuto",
+            description="Este site de loja não existe ou está desativado no momento.",
+            image=None,
+            site_name="StockAuto",
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    dealer = await db.users.find_one(
+        {"id": site["dealer_id"]},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not dealer or dealer.get("status") != "active":
+        html = _render_share_html(
+            canonical_url=canonical,
+            title="Loja indisponível — StockAuto",
+            description="Esta loja não está disponível no momento.",
+            image=None,
+            site_name="StockAuto",
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    store_name = dealer.get("store_name") or f"Loja em {dealer.get('city') or ''}"
+    city_uf = f"{dealer.get('city','')}/{dealer.get('uf','')}".strip("/")
+    about = (site.get("about_text") or "").strip()
+    default_desc = f"{store_name} — {city_uf}. Confira o estoque completo direto no site oficial da loja."
+    description = (about or default_desc)[:300]
+
+    # og:image priority: logo → cover → StockAuto default
+    image = (
+        _abs_file_url(origin, site.get("logo_path"))
+        or _abs_file_url(origin, site.get("cover_path"))
+        or f"{origin}/og-default.png"
+    )
+
+    html = _render_share_html(
+        canonical_url=canonical,
+        title=f"{store_name} — {city_uf}",
+        description=description,
+        image=image,
+        site_name=store_name,
+    )
+    return HTMLResponse(content=html, status_code=200)
+
+
+@api.get("/share/loja/{subdomain}/veiculo/{slug}", response_class=HTMLResponse)
+async def share_store_site_vehicle(subdomain: str, slug: str, request: Request):
+    """Crawler-friendly share preview for /loja/{subdomain}/veiculo/{slug}."""
+    origin = _abs_origin(request)
+    canonical = f"{origin}/loja/{subdomain}/veiculo/{slug}"
+
+    site = await _resolve_site_from_request(request, sub_override=subdomain)
+    if not site or not site.get("site_active"):
+        html = _render_share_html(
+            canonical_url=canonical,
+            title="Anúncio indisponível — StockAuto",
+            description="Este anúncio não está mais disponível.",
+            image=None,
+            site_name="StockAuto",
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    dealer = await db.users.find_one(
+        {"id": site["dealer_id"]},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not dealer or dealer.get("status") != "active":
+        html = _render_share_html(
+            canonical_url=canonical,
+            title="Loja indisponível — StockAuto",
+            description="Esta loja não está disponível no momento.",
+            image=None,
+            site_name="StockAuto",
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    v = await db.vehicles.find_one(
+        {
+            "$or": [{"slug": slug}, {"id": slug}],
+            "dealer_id": site["dealer_id"],
+            "status": "active",
+            "ad_type": {"$ne": "repasse"},
+        },
+        {"_id": 0},
+    )
+    if not v:
+        # dealer_id isolation preserved — cross-tenant slug never leaks.
+        html = _render_share_html(
+            canonical_url=canonical,
+            title=f"Anúncio indisponível — {dealer.get('store_name','')}".strip(" —"),
+            description="Este veículo não está mais disponível nesta loja.",
+            image=_abs_file_url(origin, site.get("logo_path")),
+            site_name=dealer.get("store_name") or "StockAuto",
+        )
+        return HTMLResponse(content=html, status_code=200)
+
+    store_name = dealer.get("store_name") or "Loja"
+    version = (v.get("version") or "").strip()
+    title = f"{v.get('brand','')} {v.get('model','')} {version} {v.get('year_model','')}".strip()
+    # Preço: usa preço efetivo (oferta se válida, senão price). "Consulte" quando ausente.
+    price = None
+    try:
+        p = float(v.get("price") or 0)
+        offer = float(v.get("offer_price") or 0)
+        if offer and 0 < offer < p:
+            price = offer
+        elif p > 0:
+            price = p
+    except (TypeError, ValueError):
+        price = None
+    price_str = f"R$ {price:,.0f}".replace(",", ".") if price else "Consulte o valor"
+    short_desc = (v.get("description") or "").strip().split("\n", 1)[0][:180]
+    desc_parts = [f"{price_str}", short_desc, f"na {store_name}"]
+    description = " · ".join([p for p in desc_parts if p])[:300]
+
+    # og:image priority: primeira foto → logo da loja → default
+    image = (
+        _abs_file_url(origin, _first_photo(v))
+        or _abs_file_url(origin, site.get("logo_path"))
+        or f"{origin}/og-default.png"
+    )
+
+    html = _render_share_html(
+        canonical_url=canonical,
+        title=f"{title} — {store_name}",
+        description=description,
+        image=image,
+        site_name=store_name,
+    )
+    return HTMLResponse(content=html, status_code=200)
 
 
 @api.get("/admin/settings")
