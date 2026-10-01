@@ -92,6 +92,14 @@ export default function WhiteLabelVehicleDetail({ pathMode = false }) {
 
   const waMessage = `Olá ${dealer.store_name}! Vi o ${title} no site de vocês e gostaria de mais informações.`;
 
+  // First valid vehicle photo → used both for Helmet OG and as the share
+  // image fallback. The server-side share endpoint computes the same
+  // priority (first photo → logo da loja → default).
+  const sharePhoto = photos[0] || v.main_photo || site.logo_path || null;
+  const shareUrl = pathMode && subdomain
+    ? `${window.location.origin}/api/share/loja/${subdomain}/veiculo/${v.slug || v.id}`
+    : undefined;
+
   return (
     <div
       data-testid="wl-vehicle-page"
@@ -102,6 +110,21 @@ export default function WhiteLabelVehicleDetail({ pathMode = false }) {
         <title>{`${title} — ${dealer.store_name}`}</title>
         <meta name="description" content={desc} />
         {site.favicon_path && <link rel="icon" href={fileUrl(site.favicon_path)} />}
+        {/* OG/Twitter tags for JS-aware crawlers. Social crawlers that
+            don't execute JS (WhatsApp/Facebook) hit the server-rendered
+            /api/share/loja/{sub}/veiculo/{slug} instead. */}
+        <meta property="og:type" content="product" />
+        <meta property="og:site_name" content={dealer.store_name} />
+        <meta property="og:title" content={`${title} — ${dealer.store_name}`} />
+        <meta property="og:description" content={desc} />
+        {pathMode && subdomain && (
+          <meta property="og:url" content={`${window.location.origin}/loja/${subdomain}/veiculo/${v.slug || v.id}`} />
+        )}
+        {sharePhoto && <meta property="og:image" content={fileUrl(sharePhoto)} />}
+        <meta name="twitter:card" content={sharePhoto ? "summary_large_image" : "summary"} />
+        <meta name="twitter:title" content={`${title} — ${dealer.store_name}`} />
+        <meta name="twitter:description" content={desc} />
+        {sharePhoto && <meta name="twitter:image" content={fileUrl(sharePhoto)} />}
       </Helmet>
 
       {/* Tenant-only compact header (no StockAuto branding) */}
@@ -253,6 +276,7 @@ export default function WhiteLabelVehicleDetail({ pathMode = false }) {
                   title={`${title} — ${dealer.store_name}`}
                   text={`Confira este ${v.brand} ${v.model} na ${dealer.store_name}`}
                   testid="wl-vehicle-share"
+                  url={shareUrl}
                 />
               </div>
             </div>

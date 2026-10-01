@@ -186,6 +186,92 @@ class TestUniqueness:
             admin_session.delete(f"{API}/admin/users/{idB}")
 
 
+class TestShareEndpoints:
+    """
+    Server-side HTML share preview endpoints for crawlers that don't
+    execute JavaScript (WhatsApp, Facebook).
+      - /api/share/loja/{sub}
+      - /api/share/loja/{sub}/veiculo/{slug}
+    Both must return 200 with HTML containing OG/Twitter tags + a
+    meta-refresh redirect to the actual /loja/... route, and must honor
+    dealer_id isolation (same guarantees as the JSON endpoints).
+    """
+
+    def test_share_store_returns_og_html(self, admin_session, dealer):
+        sub = f"sh-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub,
+                                 "about_text": "Loja de teste do StockAuto."})
+        r = requests.get(f"{API}/share/loja/{sub}")
+        assert r.status_code == 200
+        html = r.text
+        assert "og:title" in html
+        assert "og:description" in html
+        assert "og:url" in html
+        assert "twitter:card" in html
+        assert f"/loja/{sub}" in html  # redirect/canonical points to SPA route
+        assert "http-equiv=\"refresh\"" in html
+
+    def test_share_store_fallback_when_missing(self):
+        # Non-existent subdomain → still 200 with friendly fallback HTML
+        # (so WhatsApp preview doesn't show a scary 404).
+        r = requests.get(f"{API}/share/loja/does-not-exist-xyz")
+        assert r.status_code == 200
+        assert "og:title" in r.text
+
+    def test_share_vehicle_isolation_cross_tenant(self, admin_session, dealer):
+        """A vehicle from dealer B must never leak under subdomain of dealer A."""
+        subA = f"shiA-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": subA})
+
+        emailB = f"shiB-{uuid.uuid4().hex[:8]}@test.com"
+        sB = requests.Session()
+        rB_reg = sB.post(f"{API}/auth/register", json={
+            "email": emailB, "password": "Test@1234",
+            "store_name": f"ShareB {uuid.uuid4().hex[:4]}",
+            "phone": "(67) 3000-0000", "whatsapp": "(67) 99000-0000",
+            "city": "Campo Grande", "uf": "MS", "plan_code": "loja",
+        })
+        idB = rB_reg.json()["id"]
+        admin_session.put(f"{API}/admin/users/{idB}", json={"status": "active"})
+        sB2 = requests.Session()
+        sB2.post(f"{API}/auth/login", json={"email": emailB, "password": "Test@1234"})
+        rvB = sB2.post(f"{API}/dealer/vehicles", json={
+            "category": "carro", "brand": "Honda", "model": "Civic",
+            "year_made": 2020, "year_model": 2021, "km": 40000,
+            "price": 95000, "city": "Campo Grande", "uf": "MS", "ad_type": "public",
+        })
+        vidB = rvB.json()["id"]
+        admin_session.put(f"{API}/admin/vehicles/{vidB}/status", json={"status": "active"})
+        slugB = rvB.json().get("slug") or vidB
+
+        try:
+            # B's vehicle under A's subdomain → 200 (friendly) but MUST NOT
+            # expose the Honda Civic brand/model string in the HTML.
+            r = requests.get(f"{API}/share/loja/{subA}/veiculo/{slugB}")
+            assert r.status_code == 200
+            assert "Honda" not in r.text
+            assert "Civic" not in r.text
+        finally:
+            admin_session.delete(f"{API}/admin/users/{idB}")
+
+    def test_share_og_url_absolute(self, admin_session, dealer):
+        """og:url and og:image (when present) must be absolute http(s) URLs."""
+        import re
+        sub = f"shabs-{uuid.uuid4().hex[:6]}"
+        admin_session.post(f"{API}/admin/store-sites",
+                           json={"dealer_id": dealer["id"], "subdomain": sub})
+        r = requests.get(f"{API}/share/loja/{sub}")
+        assert r.status_code == 200
+        og_url = re.search(r'property="og:url" content="([^"]+)"', r.text)
+        assert og_url is not None
+        assert og_url.group(1).startswith("http://") or og_url.group(1).startswith("https://")
+        og_img = re.search(r'property="og:image" content="([^"]+)"', r.text)
+        if og_img:
+            assert og_img.group(1).startswith("http://") or og_img.group(1).startswith("https://")
+
+
 class TestDeleteEndpoint:
     """
     DELETE /admin/store-sites/{dealer_id} — removes ONLY the site config

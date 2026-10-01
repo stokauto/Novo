@@ -172,6 +172,25 @@ export default function WhiteLabelSite({ pathMode = false }) {
         {site.favicon_path && (
           <link rel="icon" href={fileUrl(site.favicon_path)} />
         )}
+        {/* OG/Twitter tags for JS-aware crawlers. Social crawlers that
+            don't execute JS (WhatsApp, Facebook) hit /api/share/loja/{sub}
+            instead — ShareControls shares that URL. */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={dealer.store_name} />
+        <meta property="og:title" content={`${dealer.store_name} — ${dealer.city}/${dealer.uf}`} />
+        <meta property="og:description" content={(site.about_text || `${dealer.store_name} em ${dealer.city}/${dealer.uf}`).slice(0, 300)} />
+        {subdomain && (
+          <meta property="og:url" content={`${window.location.origin}/loja/${subdomain}`} />
+        )}
+        {(site.logo_path || site.cover_path) && (
+          <meta property="og:image" content={fileUrl(site.logo_path || site.cover_path)} />
+        )}
+        <meta name="twitter:card" content={(site.logo_path || site.cover_path) ? "summary_large_image" : "summary"} />
+        <meta name="twitter:title" content={`${dealer.store_name} — ${dealer.city}/${dealer.uf}`} />
+        <meta name="twitter:description" content={(site.about_text || `${dealer.store_name} em ${dealer.city}/${dealer.uf}`).slice(0, 300)} />
+        {(site.logo_path || site.cover_path) && (
+          <meta name="twitter:image" content={fileUrl(site.logo_path || site.cover_path)} />
+        )}
       </Helmet>
 
       {/* Tenant header (no StockAuto chrome).
@@ -253,6 +272,12 @@ export default function WhiteLabelSite({ pathMode = false }) {
               text="Confira a vitrine da loja"
               testid="wl-hero-share"
               compact
+              /* Point WhatsApp/Facebook crawlers at the server-side HTML
+                 that returns real OG tags. Humans get redirected to the
+                 SPA route in ~0s via meta-refresh. */
+              url={subdomain
+                ? `${window.location.origin}/api/share/loja/${subdomain}`
+                : undefined}
             />
           </div>
         </div>
